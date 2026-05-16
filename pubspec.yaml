@@ -1,0 +1,35 @@
+name: etisalaty
+description: تطبيق إدارة جهات الاتصال للموظفين ومسؤولي الأمن
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI Icons
+  cupertino_icons: ^1.0.8
+
+  # Contacts & Permissions (الحل الجديد)
+  flutter_contacts: ^1.1.6  # بدلاً من contacts_service
+  permission_handler: ^11.0.0
+
+  # Local Storage
+  shared_preferences: ^2.2.0
+
+  # API Calls
+  http: ^1.1.0
+
+  # Utilities
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
