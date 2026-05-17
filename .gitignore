@@ -18,10 +18,8 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code (علّقته لأنه عايز تحتفظ بالإعدادات أحياناً)
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -43,3 +41,77 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ✅ إضافات مهمة جداً
+
+# Keys and secrets
+*.key
+*.pem
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+secrets.dart
+env.dart
+
+# iOS specific
+**/ios/Pods/
+**/ios/Podfile.lock
+**/ios/.symlinks/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/ephemeral/
+**/ios/Runner.xcworkspace/xcuserdata/
+**/ios/Runner.xcodeproj/project.xcworkspace/xcuserdata/
+**/ios/Runner.xcodeproj/xcuserdata/
+**/ios/*.mode1v3
+**/ios/*.mode2v3
+**/ios/*.pbxuser
+**/ios/*.perspectivev3
+**/ios/*.xcuserstate
+
+# Android specific
+**/android/local.properties
+**/android/**/*.keystore
+**/android/**/*.jks
+**/android/.gradle/
+**/android/captures/
+**/android/app/src/debug/
+**/android/app/src/profile/
+**/android/app/src/release/
+
+# Windows specific
+**/windows/flutter/ephemeral/
+**/windows/out/
+**/windows/build/
+**/windows/*.exe
+
+# macOS specific
+**/macos/Flutter/ephemeral/
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+**/macos/build/
+**/macos/Pods/
+**/macos/Podfile.lock
+
+# Web specific
+**/web/*.dart.js
+**/web/*.dart.precompiled.js
+**/web/**/*.dart.js.map
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Backup files
+*.bak
+*.old
+*.orig
+
+# Temp files
+*.tmp
+*.temp
+*.cache
