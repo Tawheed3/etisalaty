@@ -6,8 +6,10 @@ import 'employee_screen.dart';
 import 'security_screen.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
@@ -25,25 +27,22 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('🔐 ATTEMPTING LOGIN');
-    print('📧 Email: $email');
-    print('🔑 Password: ${'*' * password.length}');
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('🔐 ATTEMPTING LOGIN');
 
     final result = await ApiService.login(email, password);
+    if (!mounted) return;
 
     setState(() => _isLoading = false);
 
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📊 LOGIN RESULT');
-    print('Status: ${result['status']}');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('📊 LOGIN RESULT');
+    debugPrint('Status: ${result['status']}');
     if (result['status'] != 'success') {
-      print('Error: ${result['message']}');
-      print('Code: ${result['code']}');
-      print('StatusCode: ${result['statusCode']}');
+      debugPrint('Error: ${result['message']}');
+      debugPrint('Code: ${result['code']}');
+      debugPrint('StatusCode: ${result['statusCode']}');
     }
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     if (result['status'] == 'success') {
       // حفظ بيانات المستخدم
@@ -53,19 +52,20 @@ class _LoginScreenState extends State<LoginScreen> {
         userId: result['data']['user_id'],
         name: result['data']['name'],
       );
+      if (!mounted) return;
 
-      print('✅ User data saved!');
-      print('👤 Role: ${result['data']['role']}');
+      debugPrint('✅ User data saved!');
+      debugPrint('👤 Role: ${result['data']['role']}');
 
       if (result['data']['role'] == 'security') {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => SecurityScreen()),
+          MaterialPageRoute(builder: (context) => const SecurityScreen()),
         );
       } else {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => EmployeeScreen()),
+          MaterialPageRoute(builder: (context) => const EmployeeScreen()),
         );
       }
     } else {
@@ -143,7 +143,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       labelText: 'كلمة المرور',
                       prefixIcon: Icon(Icons.lock),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
                         onPressed: () {
                           setState(() => _obscurePassword = !_obscurePassword);
                         },
@@ -177,9 +181,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: _isLoading
                           ? CircularProgressIndicator(color: Colors.white)
                           : Text(
-                        'تسجيل الدخول',
-                        style: TextStyle(fontSize: 18),
-                      ),
+                              'تسجيل الدخول',
+                              style: TextStyle(fontSize: 18),
+                            ),
                     ),
                   ),
                 ],

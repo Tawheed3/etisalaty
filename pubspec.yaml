@@ -10,20 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # UI Icons
   cupertino_icons: ^1.0.8
-
-  # Contacts & Permissions (نسخة مستقرة على iOS و Android)
-  contacts_service: ^0.6.3
-  permission_handler: ^11.0.0
-
-  # Local Storage
+  flutter_contacts: ^1.1.6
   shared_preferences: ^2.2.0
-
-  # API Calls
   http: ^1.1.0
-
-  # Utilities
   intl: ^0.19.0
 
 dev_dependencies:

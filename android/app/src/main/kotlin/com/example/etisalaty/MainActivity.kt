@@ -1,4 +1,4 @@
-package com.example.etisalaty
+package com.rehltna.etisalaty
 
 import io.flutter.embedding.android.FlutterActivity
 

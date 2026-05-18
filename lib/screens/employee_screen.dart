@@ -7,8 +7,10 @@ import 'clean_duplicates_screen.dart';
 import '../main.dart';
 
 class EmployeeScreen extends StatefulWidget {
+  const EmployeeScreen({super.key});
+
   @override
-  _EmployeeScreenState createState() => _EmployeeScreenState();
+  State<EmployeeScreen> createState() => _EmployeeScreenState();
 }
 
 class _EmployeeScreenState extends State<EmployeeScreen> {
@@ -31,14 +33,15 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
 
     try {
       // 1. جلب كل جهات الاتصال من الجهاز
-      List<Map<String, String>> allContacts = await ContactsManager.getAllContacts();
+      List<Map<String, String>> allContacts =
+          await ContactsManager.getAllContacts();
 
       if (allContacts.isEmpty) {
         _showMessage('مفيش جهات اتصال على الجهاز', Colors.orange);
         return;
       }
 
-      print('📱 [_uploadContacts] تم جلب ${allContacts.length} جهة اتصال');
+      debugPrint('📱 [_uploadContacts] تم جلب ${allContacts.length} جهة اتصال');
 
       // 2. جلب التوكن
       String? token = await LocalStorage.getToken();
@@ -48,42 +51,46 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
       }
 
       // 3. رفع كل الأرقام للسيرفر (السيرفر هو اللي يفلتر)
-      print('📡 [_uploadContacts] إرسال ${allContacts.length} رقم إلى السيرفر...');
+      debugPrint(
+        '📡 [_uploadContacts] إرسال ${allContacts.length} رقم إلى السيرفر...',
+      );
       final result = await ApiService.uploadContacts(token, allContacts);
 
       if (result['status'] == 'success') {
         int newCount = result['data']['new_contacts_added'] ?? 0;
         int alreadyExists = result['data']['already_exists'] ?? 0;
-        int duplicatesByEmployee = result['data']['duplicates_by_employee'] ?? 0;
+        int duplicatesByEmployee =
+            result['data']['duplicates_by_employee'] ?? 0;
 
-        print('✅ [_uploadContacts] نتيجة الرفع:');
-        print('   - جديد في النظام: $newCount');
-        print('   - موجود مسبقاً: $alreadyExists');
-        print('   - مكرر من الموظف: $duplicatesByEmployee');
+        debugPrint('✅ [_uploadContacts] نتيجة الرفع:');
+        debugPrint('   - جديد في النظام: $newCount');
+        debugPrint('   - موجود مسبقاً: $alreadyExists');
+        debugPrint('   - مكرر من الموظف: $duplicatesByEmployee');
 
         _showMessage(
-            '✅ تم رفع ${allContacts.length} رقم\n'
-                '🆕 جديد في النظام: $newCount\n'
-                '⚠️ موجود مسبقاً: $alreadyExists\n'
-                '👤 مكرر منك: $duplicatesByEmployee',
-            Colors.green
+          '✅ تم رفع ${allContacts.length} رقم\n'
+          '🆕 جديد في النظام: $newCount\n'
+          '⚠️ موجود مسبقاً: $alreadyExists\n'
+          '👤 مكرر منك: $duplicatesByEmployee',
+          Colors.green,
         );
       } else {
         _showMessage(result['message'] ?? 'حدث خطأ', Colors.red);
       }
-
     } catch (e) {
-      print('❌ [_uploadContacts] خطأ: ${e.toString()}');
+      debugPrint('❌ [_uploadContacts] خطأ: ${e.toString()}');
       _showMessage('خطأ: ${e.toString()}', Colors.red);
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() => _isUploading = false);
+      }
     }
   }
 
   void _showMessage(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   Future<void> _logout() async {
@@ -105,6 +112,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
       ),
     );
 
+    if (!mounted) return;
     if (confirm == true) {
       await MyApp.logoutAndNavigate(context);
     }
@@ -135,10 +143,10 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
                 onPressed: _isUploading ? null : _uploadContacts,
                 icon: _isUploading
                     ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Icon(Icons.cloud_upload, size: 28),
                 label: Text(
                   _isUploading ? 'جاري الرفع...' : 'رفع الأرقام',
@@ -162,7 +170,9 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => CleanDuplicatesScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const CleanDuplicatesScreen(),
+                    ),
                   );
                 },
                 icon: Icon(Icons.cleaning_services, size: 28),

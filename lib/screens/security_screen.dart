@@ -9,11 +9,17 @@ import 'clean_duplicates_screen.dart';
 import '../main.dart';
 
 class SecurityScreen extends StatefulWidget {
+  const SecurityScreen({super.key});
+
   @override
-  _SecurityScreenState createState() => _SecurityScreenState();
+  State<SecurityScreen> createState() => _SecurityScreenState();
 }
 
 class _SecurityScreenState extends State<SecurityScreen> {
+  static const bool _traceContacts = bool.fromEnvironment(
+    'ETISALATY_TRACE_CONTACTS',
+  );
+
   bool _isUploading = false;
   bool _isDownloading = false;
   String? _userName;
@@ -21,23 +27,32 @@ class _SecurityScreenState extends State<SecurityScreen> {
   @override
   void initState() {
     super.initState();
+    _requestPermissions(); // ✅ أضف هذا السطر
     _loadUserName();
+  }
+
+  Future<void> _requestPermissions() async {
+    await FlutterContacts.requestPermission();
   }
 
   Future<void> _loadUserName() async {
     String? name = await LocalStorage.getUserName();
     setState(() => _userName = name);
-    print('👤 Loaded user name: $name');
+    debugPrint('👤 Loaded user name: $name');
   }
 
-  // جلب الأرقام الموجودة بالفعل على الجهاز (موحدة الصيغة)
+  // جلب الأرقام الموجودة بالفعل على الجهاز
   Future<Set<String>> getExistingPhoneNumbersOnDevice() async {
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📱 [getExistingPhoneNumbersOnDevice] بدء قراءة جهات الاتصال على الجهاز');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint(
+      '📱 [getExistingPhoneNumbersOnDevice] بدء قراءة جهات الاتصال على الجهاز',
+    );
 
     try {
       if (!await FlutterContacts.requestPermission(readonly: true)) {
-        print('❌ [getExistingPhoneNumbersOnDevice] مفيش إذن لقراءة الجهات');
+        debugPrint(
+          '❌ [getExistingPhoneNumbersOnDevice] مفيش إذن لقراءة الجهات',
+        );
         return {};
       }
 
@@ -45,7 +60,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
         withProperties: true,
       );
 
-      print('📱 [getExistingPhoneNumbersOnDevice] تم قراءة ${deviceContacts.length} جهة اتصال من الجهاز');
+      debugPrint(
+        '📱 [getExistingPhoneNumbersOnDevice] تم قراءة ${deviceContacts.length} جهة اتصال من الجهاز',
+      );
 
       Set<String> existingNumbers = {};
       for (var contact in deviceContacts) {
@@ -55,19 +72,26 @@ class _SecurityScreenState extends State<SecurityScreen> {
         }
       }
 
-      print('📱 [getExistingPhoneNumbersOnDevice] أرقام فريدة على الجهاز: ${existingNumbers.length}');
+      debugPrint(
+        '📱 [getExistingPhoneNumbersOnDevice] أرقام فريدة على الجهاز: ${existingNumbers.length}',
+      );
       if (existingNumbers.isNotEmpty) {
-        print('📱 [getExistingPhoneNumbersOnDevice] مثال لأول 5 أرقام: ${existingNumbers.take(5).toList()}');
+        debugPrint(
+          '📱 [getExistingPhoneNumbersOnDevice] مثال لأول 5 أرقام: ${existingNumbers.take(5).toList()}',
+        );
       }
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       return existingNumbers;
     } catch (e) {
-      print('❌ [getExistingPhoneNumbersOnDevice] خطأ: $e');
+      debugPrint('❌ [getExistingPhoneNumbersOnDevice] خطأ: $e');
       return {};
     }
   }
 
-  // حفظ الأرقام الجديدة في جهات اتصال الجهاز (بالصيغة الموحدة)
+  // حفظ الأرقام الجديدة في جهات اتصال الجهاز
+  // lib/screens/security_screen.dart
+// دالة _saveContactsToDevice كاملة مع طباعة مفصلة
+
   Future<void> _saveContactsToDevice(List contacts) async {
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     print('💾 [_saveContactsToDevice] بدء حفظ ${contacts.length} جهة اتصال');
@@ -82,7 +106,13 @@ class _SecurityScreenState extends State<SecurityScreen> {
     print('📱 [_saveContactsToDevice] الأرقام الموجودة حالياً: ${currentDeviceNumbers.length}');
 
     List finalContacts = contacts.where((contact) {
-      String phoneNumber = contact['phone_number'] ?? '';
+      String phoneNumber = _readContactField(contact, const [
+        'phone_number',
+        'phoneNumber',
+        'phone',
+        'number',
+        'mobile',
+      ]);
       String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
       bool exists = currentDeviceNumbers.contains(cleanNumber);
       if (exists) {
@@ -99,18 +129,58 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
     for (int i = 0; i < total; i++) {
       var contactData = finalContacts[i];
-      String phoneNumber = contactData['phone_number'] ?? '';
-      String contactName = contactData['contact_name'] ?? 'بدون اسم';
 
+      String phoneNumber = _readContactField(contactData, const [
+        'phone_number',
+        'phoneNumber',
+        'phone',
+        'number',
+        'mobile',
+      ]);
+      String contactName = _readContactField(contactData, const [
+        'contact_name',
+        'contactName',
+        'name',
+        'display_name',
+        'displayName',
+        'full_name',
+        'fullName',
+      ]);
       String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
+      String displayName = _cleanContactName(contactName, cleanNumber);
+
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('💾 حفظ رقم #${i+1}/$total');
+      print('   📞 الرقم الأصلي من السيرفر: "$phoneNumber"');
+      print('   📞 الرقم بعد التوحيد: "$cleanNumber"');
+      print('   📝 الاسم الأصلي من السيرفر: "$contactName"');
+      print('   📝 الاسم بعد التنظيف: "$displayName"');
+
+      _traceContact(
+        'SAVE_PREP index=$i rawKeys=${_contactKeys(contactData)} '
+            'rawName="$contactName" rawPhone="$phoneNumber" '
+            'displayName="$displayName" normalizedPhone="$cleanNumber"',
+      );
 
       String countryCode = PhoneNormalizer.getCountryCode(cleanNumber);
-      String displayCountry = countryCode == '+20' ? 'مصر' : (countryCode == '+966' ? 'السعودية' : 'غير معروف');
+      String displayCountry = countryCode == '+20'
+          ? 'مصر'
+          : (countryCode == '+966' ? 'السعودية' : 'غير معروف');
+
+      print('   🌍 البلد: $displayCountry ($countryCode)');
 
       try {
         final Contact newContact = Contact()
-          ..displayName = contactName
+          ..displayName = displayName
+          ..name.first = displayName
           ..phones = [Phone(cleanNumber, label: PhoneLabel.mobile)];
+
+        _traceContact(
+          'INSERT_CONTACT index=$i '
+              'contact.displayName="${newContact.displayName}" '
+              'contact.name.first="${newContact.name.first}" '
+              'phone="${newContact.phones.first.number}"',
+        );
 
         await newContact.insert();
         savedCount++;
@@ -123,113 +193,203 @@ class _SecurityScreenState extends State<SecurityScreen> {
           await Future.delayed(Duration(milliseconds: 100));
         }
 
-        print('✅ [_saveContactsToDevice] تم حفظ ($savedCount/$total): $contactName - $cleanNumber [$displayCountry]');
+        print('✅ [_saveContactsToDevice] تم حفظ ($savedCount/$total): "$displayName" - $cleanNumber [$displayCountry]');
       } catch (e) {
-        print('❌ [_saveContactsToDevice] خطأ في حفظ $contactName: $e');
+        print('❌ [_saveContactsToDevice] خطأ في حفظ "$displayName": $e');
       }
     }
 
+    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     print('🎉 [_saveContactsToDevice] تم حفظ $savedCount جهة اتصال جديدة من أصل $total');
     print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     if (mounted && savedCount > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ تم حفظ $savedCount رقم جديد'), backgroundColor: Colors.green),
+        SnackBar(
+          content: Text('✅ تم حفظ $savedCount رقم جديد'),
+          backgroundColor: Colors.green,
+        ),
       );
     }
   }
 
-  // زر الرفع (يرفع كل الأرقام، السيرفر هو اللي يفلتر)
+  String _readContactField(dynamic contactData, List<String> keys) {
+    if (contactData is! Map) return '';
+
+    for (final key in keys) {
+      final value = contactData[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+
+    return '';
+  }
+
+  String _cleanContactName(String name, String phoneNumber) {
+    final cleaned = name.trim();
+    if (cleaned.isEmpty || cleaned == phoneNumber) {
+      return 'بدون اسم';
+    }
+
+    return cleaned;
+  }
+
+  void _traceServerContacts(List contacts) {
+    if (!_traceContacts) return;
+
+    _traceContact('SERVER_RESPONSE count=${contacts.length}');
+    for (int i = 0; i < contacts.length; i++) {
+      final contact = contacts[i];
+      final rawName = _readContactField(contact, const [
+        'contact_name',
+        'contactName',
+        'name',
+        'display_name',
+        'displayName',
+        'full_name',
+        'fullName',
+      ]);
+      final rawPhone = _readContactField(contact, const [
+        'phone_number',
+        'phoneNumber',
+        'phone',
+        'number',
+        'mobile',
+      ]);
+
+      _traceContact(
+        'SERVER_CONTACT index=$i keys=${_contactKeys(contact)} '
+        'rawName="$rawName" rawPhone="$rawPhone" '
+        'raw=$contact',
+      );
+    }
+  }
+
+  String _contactKeys(dynamic contactData) {
+    if (contactData is Map) {
+      return contactData.keys.map((key) => key.toString()).join(',');
+    }
+    return contactData.runtimeType.toString();
+  }
+
+  void _traceContact(String message) {
+    if (_traceContacts) {
+      debugPrint('ETISALATY_CONTACT_TRACE $message', wrapWidth: 1024);
+    }
+  }
+
+  // زر الرفع
   Future<void> _uploadContacts() async {
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📤 [_uploadContacts] بدء عملية رفع الأرقام');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('📤 [_uploadContacts] بدء عملية رفع الأرقام');
     setState(() => _isUploading = true);
 
     try {
-      List<Map<String, String>> allContacts = await ContactsManager.getAllContacts();
+      List<Map<String, String>> allContacts =
+          await ContactsManager.getAllContacts();
 
       if (allContacts.isEmpty) {
-        print('⚠️ [_uploadContacts] مفيش جهات اتصال على الجهاز');
+        debugPrint('⚠️ [_uploadContacts] مفيش جهات اتصال على الجهاز');
         _showMessage('مفيش جهات اتصال على الجهاز', Colors.orange);
         return;
       }
 
-      print('📱 [_uploadContacts] تم جلب ${allContacts.length} جهة اتصال من الجهاز');
+      debugPrint(
+        '📱 [_uploadContacts] تم جلب ${allContacts.length} جهة اتصال من الجهاز',
+      );
 
       String? token = await LocalStorage.getToken();
       if (token == null) {
-        print('❌ [_uploadContacts] مفيش توكن');
+        debugPrint('❌ [_uploadContacts] مفيش توكن');
         _showMessage('من فضلك سجل الدخول مرة أخرى', Colors.red);
         return;
       }
 
-      print('📡 [_uploadContacts] إرسال ${allContacts.length} رقم إلى السيرفر...');
+      debugPrint(
+        '📡 [_uploadContacts] إرسال ${allContacts.length} رقم إلى السيرفر...',
+      );
       final result = await ApiService.uploadContacts(token, allContacts);
 
       if (result['status'] == 'success') {
         int newCount = result['data']['new_contacts_added'] ?? 0;
         int alreadyExists = result['data']['already_exists'] ?? 0;
-        int duplicatesByEmployee = result['data']['duplicates_by_employee'] ?? 0;
+        int duplicatesByEmployee =
+            result['data']['duplicates_by_employee'] ?? 0;
 
-        print('✅ [_uploadContacts] نتيجة الرفع:');
-        print('   - جديد في النظام: $newCount');
-        print('   - موجود مسبقاً: $alreadyExists');
-        print('   - مكرر من الموظف: $duplicatesByEmployee');
+        debugPrint('✅ [_uploadContacts] نتيجة الرفع:');
+        debugPrint('   - جديد في النظام: $newCount');
+        debugPrint('   - موجود مسبقاً: $alreadyExists');
+        debugPrint('   - مكرر من الموظف: $duplicatesByEmployee');
 
         _showMessage(
-            '✅ تم رفع ${allContacts.length} رقم\n'
-                '🆕 جديد في النظام: $newCount\n'
-                '⚠️ موجود مسبقاً: $alreadyExists\n'
-                '👤 مكرر منك: $duplicatesByEmployee',
-            Colors.green
+          '✅ تم رفع ${allContacts.length} رقم\n'
+          '🆕 جديد في النظام: $newCount\n'
+          '⚠️ موجود مسبقاً: $alreadyExists\n'
+          '👤 مكرر منك: $duplicatesByEmployee',
+          Colors.green,
         );
       } else {
-        print('❌ [_uploadContacts] فشل الرفع: ${result['message']}');
+        debugPrint('❌ [_uploadContacts] فشل الرفع: ${result['message']}');
         _showMessage(result['message'] ?? 'حدث خطأ', Colors.red);
       }
-
     } catch (e) {
-      print('❌ [_uploadContacts] خطأ: ${e.toString()}');
+      debugPrint('❌ [_uploadContacts] خطأ: ${e.toString()}');
       _showMessage('خطأ: ${e.toString()}', Colors.red);
     } finally {
       setState(() => _isUploading = false);
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   }
 
-  // زر السحب (مسؤول الأمن فقط)
+  // زر السحب
   Future<void> _downloadContacts() async {
-    print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    print('📥 [_downloadContacts] بدء عملية سحب الأرقام');
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('📥 [_downloadContacts] بدء عملية سحب الأرقام');
     setState(() => _isDownloading = true);
 
     try {
       String? token = await LocalStorage.getToken();
       if (token == null) {
-        print('❌ [_downloadContacts] مفيش توكن');
+        debugPrint('❌ [_downloadContacts] مفيش توكن');
         _showMessage('من فضلك سجل الدخول مرة أخرى', Colors.red);
         setState(() => _isDownloading = false);
         return;
       }
 
-      print('📡 [_downloadContacts] إرسال طلب إلى السيرفر...');
+      debugPrint('📡 [_downloadContacts] إرسال طلب إلى السيرفر...');
       final result = await ApiService.downloadContacts(token);
 
       if (result['status'] == 'success') {
         List allContacts = result['data']['contacts'] ?? [];
-        int totalFromServer = allContacts.length;
-        print('📊 [_downloadContacts] إجمالي الأرقام من السيرفر: $totalFromServer');
+        _traceServerContacts(allContacts);
 
-        print('🔍 [_downloadContacts] جلب الأرقام الموجودة على الجهاز...');
+        int totalFromServer = allContacts.length;
+        debugPrint(
+          '📊 [_downloadContacts] إجمالي الأرقام من السيرفر: $totalFromServer',
+        );
+
+        debugPrint('🔍 [_downloadContacts] جلب الأرقام الموجودة على الجهاز...');
         Set<String> existingOnDevice = await getExistingPhoneNumbersOnDevice();
-        print('📱 [_downloadContacts] الأرقام الموجودة على الجهاز قبل الفلترة: ${existingOnDevice.length}');
+        debugPrint(
+          '📱 [_downloadContacts] الأرقام الموجودة على الجهاز قبل الفلترة: ${existingOnDevice.length}',
+        );
 
         List newContacts = [];
         int skippedCount = 0;
         Map<String, int> countryStats = {'+20': 0, '+966': 0};
 
         for (var contact in allContacts) {
-          String phoneNumber = contact['phone_number'] ?? '';
+          String phoneNumber = _readContactField(contact, const [
+            'phone_number',
+            'phoneNumber',
+            'phone',
+            'number',
+            'mobile',
+          ]);
           String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
 
           String countryCode = PhoneNormalizer.getCountryCode(cleanNumber);
@@ -242,7 +402,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
           if (exists) {
             skippedCount++;
             if (skippedCount <= 10) {
-              print('⚠️ [_downloadContacts] رقم موجود مسبقاً، تم تخطيه: $cleanNumber');
+              debugPrint(
+                '⚠️ [_downloadContacts] رقم موجود مسبقاً، تم تخطيه: $cleanNumber',
+              );
             }
           } else {
             newContacts.add(contact);
@@ -251,46 +413,62 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
         int newContactsCount = newContacts.length;
 
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        print('📊 [_downloadContacts] نتائج الفلترة:');
-        print('   - إجمالي من السيرفر: $totalFromServer');
-        print('   - أرقام جديدة: $newContactsCount');
-        print('   - أرقام موجودة مسبقاً وتم تخطيها: $skippedCount');
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        print('📊 إحصاء الأرقام حسب كود البلد:');
-        print('   - مصر (+20): ${countryStats['+20']} رقم');
-        print('   - السعودية (+966): ${countryStats['+966']} رقم');
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        debugPrint('📊 [_downloadContacts] نتائج الفلترة:');
+        debugPrint('   - إجمالي من السيرفر: $totalFromServer');
+        debugPrint('   - أرقام جديدة: $newContactsCount');
+        debugPrint('   - أرقام موجودة مسبقاً وتم تخطيها: $skippedCount');
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        debugPrint('📊 إحصاء الأرقام حسب كود البلد:');
+        debugPrint('   - مصر (+20): ${countryStats['+20']} رقم');
+        debugPrint('   - السعودية (+966): ${countryStats['+966']} رقم');
+        debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         if (newContactsCount == 0) {
-          print('⚠️ [_downloadContacts] كل الأرقام موجودة بالفعل على جهازك');
-          _showMessage('📱 كل الأرقام موجودة بالفعل على جهازك ($skippedCount رقم متكرر)', Colors.orange);
+          debugPrint(
+            '⚠️ [_downloadContacts] كل الأرقام موجودة بالفعل على جهازك',
+          );
+          _showMessage(
+            '📱 كل الأرقام موجودة بالفعل على جهازك ($skippedCount رقم متكرر)',
+            Colors.orange,
+          );
         } else {
-          print('💾 [_downloadContacts] بدء حفظ $newContactsCount رقم جديد...');
+          debugPrint(
+            '💾 [_downloadContacts] بدء حفظ $newContactsCount رقم جديد...',
+          );
           await _saveContactsToDevice(newContacts);
           _showMessage(
-              '✅ تم تحميل $newContactsCount رقم جديد\n⚠️ تم تخطي $skippedCount رقم موجود مسبقاً',
-              Colors.green
+            '✅ تم تحميل $newContactsCount رقم جديد\n⚠️ تم تخطي $skippedCount رقم موجود مسبقاً',
+            Colors.green,
           );
         }
 
-        _showDownloadSummary(newContactsCount, skippedCount, totalFromServer, countryStats);
+        _showDownloadSummary(
+          newContactsCount,
+          skippedCount,
+          totalFromServer,
+          countryStats,
+        );
       } else {
-        print('❌ [_downloadContacts] فشل السحب: ${result['message']}');
+        debugPrint('❌ [_downloadContacts] فشل السحب: ${result['message']}');
         _showMessage(result['message'] ?? 'حدث خطأ', Colors.red);
       }
-
     } catch (e) {
-      print('❌ [_downloadContacts] خطأ: ${e.toString()}');
+      debugPrint('❌ [_downloadContacts] خطأ: ${e.toString()}');
       _showMessage('خطأ: ${e.toString()}', Colors.red);
     } finally {
       setState(() => _isDownloading = false);
-      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   }
 
-  void _showDownloadSummary(int newCount, int skippedCount, int total, Map<String, int> countryStats) {
-    print('📊 [_showDownloadSummary] عرض ملخص التحميل للمستخدم');
+  void _showDownloadSummary(
+    int newCount,
+    int skippedCount,
+    int total,
+    Map<String, int> countryStats,
+  ) {
+    debugPrint('📊 [_showDownloadSummary] عرض ملخص التحميل للمستخدم');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -301,11 +479,23 @@ class _SecurityScreenState extends State<SecurityScreen> {
           children: [
             Text('📊 إجمالي الأرقام من السيرفر: $total'),
             SizedBox(height: 8),
-            Text('✅ أرقام جديدة تم تحميلها: $newCount', style: TextStyle(color: Colors.green)),
-            Text('   🇪🇬 مصر: ${countryStats['+20'] ?? 0} رقم', style: TextStyle(fontSize: 12)),
-            Text('   🇸🇦 السعودية: ${countryStats['+966'] ?? 0} رقم', style: TextStyle(fontSize: 12)),
+            Text(
+              '✅ أرقام جديدة تم تحميلها: $newCount',
+              style: TextStyle(color: Colors.green),
+            ),
+            Text(
+              '   🇪🇬 مصر: ${countryStats['+20'] ?? 0} رقم',
+              style: TextStyle(fontSize: 12),
+            ),
+            Text(
+              '   🇸🇦 السعودية: ${countryStats['+966'] ?? 0} رقم',
+              style: TextStyle(fontSize: 12),
+            ),
             SizedBox(height: 8),
-            Text('⚠️ أرقام موجودة مسبقاً وتم تخطيها: $skippedCount', style: TextStyle(color: Colors.orange)),
+            Text(
+              '⚠️ أرقام موجودة مسبقاً وتم تخطيها: $skippedCount',
+              style: TextStyle(color: Colors.orange),
+            ),
             SizedBox(height: 16),
             Text('💾 تم حفظ الأرقام الجديدة في جهات اتصال هاتفك'),
           ],
@@ -321,14 +511,14 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   void _showMessage(String message, Color color) {
-    print('📢 [_showMessage] $message');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color),
-    );
+    debugPrint('📢 [_showMessage] $message');
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   Future<void> _logout() async {
-    print('🚪 [_logout] بدء عملية تسجيل الخروج');
+    debugPrint('🚪 [_logout] بدء عملية تسجيل الخروج');
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -347,18 +537,22 @@ class _SecurityScreenState extends State<SecurityScreen> {
       ),
     );
 
+    if (!mounted) return;
     if (confirm == true) {
-      print('🚪 [_logout] تأكيد تسجيل الخروج');
+      debugPrint('🚪 [_logout] تأكيد تسجيل الخروج');
       await MyApp.logoutAndNavigate(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    print('🖥️ [SecurityScreen] بناء واجهة المستخدم');
+    debugPrint('🖥️ [SecurityScreen] بناء واجهة المستخدم');
     return Scaffold(
       appBar: AppBar(
-        title: Text('مرحباً $_userName (مسؤول أمن)', style: TextStyle(fontSize: 16)),
+        title: Text(
+          'مرحباً $_userName (مسؤول أمن)',
+          style: TextStyle(fontSize: 16),
+        ),
         actions: [
           IconButton(
             icon: Icon(Icons.logout),
@@ -372,7 +566,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // زر رفع الأرقام
             SizedBox(
               width: double.infinity,
               height: 60,
@@ -380,10 +573,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 onPressed: _isUploading ? null : _uploadContacts,
                 icon: _isUploading
                     ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Icon(Icons.cloud_upload, size: 28),
                 label: Text(
                   _isUploading ? 'جاري الرفع...' : 'رفع الأرقام',
@@ -397,10 +590,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 ),
               ),
             ),
-
             SizedBox(height: 16),
-
-            // زر سحب الأرقام (للمسؤول فقط)
             SizedBox(
               width: double.infinity,
               height: 60,
@@ -408,10 +598,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 onPressed: _isDownloading ? null : _downloadContacts,
                 icon: _isDownloading
                     ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : Icon(Icons.cloud_download, size: 28),
                 label: Text(
                   _isDownloading ? 'جاري السحب...' : 'سحب الأرقام',
@@ -425,19 +615,18 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 ),
               ),
             ),
-
             SizedBox(height: 16),
-
-            // زر تنظيف المكررات
             SizedBox(
               width: double.infinity,
               height: 60,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  print('🧹 [SecurityScreen] فتح شاشة تنظيف المكررات');
+                  debugPrint('🧹 [SecurityScreen] فتح شاشة تنظيف المكررات');
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => CleanDuplicatesScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const CleanDuplicatesScreen(),
+                    ),
                   );
                 },
                 icon: Icon(Icons.cleaning_services, size: 28),

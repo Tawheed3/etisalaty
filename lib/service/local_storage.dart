@@ -1,10 +1,10 @@
 // lib/services/local_storage.dart
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/constants.dart';
 import '../constants/phone_normalizer.dart';
 
 class LocalStorage {
-
   static Future<void> saveUserData({
     required String token,
     required String role,
@@ -17,7 +17,7 @@ class LocalStorage {
     await prefs.setInt(AppConstants.userIdKey, userId);
     await prefs.setString(AppConstants.userNameKey, name);
 
-    print('💾 Saved user data: $name ($role)');
+    debugPrint('💾 Saved user data: $name ($role)');
   }
 
   static Future<String?> getToken() async {
@@ -37,7 +37,8 @@ class LocalStorage {
 
   static Future<void> saveUploadedNumbers(List<String> numbers) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> existing = prefs.getStringList(AppConstants.uploadedNumbersKey) ?? [];
+    List<String> existing =
+        prefs.getStringList(AppConstants.uploadedNumbersKey) ?? [];
 
     // توحيد كل الأرقام قبل الحفظ
     Set<String> allNumbers = {};
@@ -48,14 +49,19 @@ class LocalStorage {
       allNumbers.add(PhoneNormalizer.normalize(n));
     }
 
-    await prefs.setStringList(AppConstants.uploadedNumbersKey, allNumbers.toList());
+    await prefs.setStringList(
+      AppConstants.uploadedNumbersKey,
+      allNumbers.toList(),
+    );
 
-    print('💾 Saved ${numbers.length} uploaded numbers (normalized)');
+    debugPrint('💾 Saved ${numbers.length} uploaded numbers (normalized)');
   }
 
   static Future<List<String>> getUploadedNumbers() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? numbers = prefs.getStringList(AppConstants.uploadedNumbersKey);
+    List<String>? numbers = prefs.getStringList(
+      AppConstants.uploadedNumbersKey,
+    );
     return numbers?.map((n) => PhoneNormalizer.normalize(n)).toList() ?? [];
   }
 
@@ -67,7 +73,7 @@ class LocalStorage {
     await prefs.remove(AppConstants.userNameKey);
     await prefs.remove(AppConstants.uploadedNumbersKey);
 
-    print('🗑️ User data cleared');
+    debugPrint('🗑️ User data cleared');
   }
 
   static Future<bool> isLoggedIn() async {

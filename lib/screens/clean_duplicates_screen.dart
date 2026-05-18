@@ -4,8 +4,10 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import '../service/contacts_service.dart';
 
 class CleanDuplicatesScreen extends StatefulWidget {
+  const CleanDuplicatesScreen({super.key});
+
   @override
-  _CleanDuplicatesScreenState createState() => _CleanDuplicatesScreenState();
+  State<CleanDuplicatesScreen> createState() => _CleanDuplicatesScreenState();
 }
 
 class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
@@ -19,43 +21,52 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
   @override
   void initState() {
     super.initState();
-    print('🧹 [CleanDuplicatesScreen] تهيئة الشاشة');
+    debugPrint('🧹 [CleanDuplicatesScreen] تهيئة الشاشة');
     _loadDuplicates();
   }
 
   Future<void> _loadDuplicates() async {
-    print('🧹 [_loadDuplicates] بدء البحث عن الأرقام المكررة');
+    debugPrint('🧹 [_loadDuplicates] بدء البحث عن الأرقام المكررة');
     setState(() => isLoading = true);
     try {
       duplicates = await ContactsManager.findDuplicateContacts();
 
       if (duplicates == null || duplicates!.isEmpty) {
-        print('🧹 [_loadDuplicates] مفيش أرقام مكررة على الجهاز');
+        debugPrint('🧹 [_loadDuplicates] مفيش أرقام مكررة على الجهاز');
       } else {
-        print('🧹 [_loadDuplicates] تم العثور على ${duplicates!.length} رقم مكرر');
+        debugPrint(
+          '🧹 [_loadDuplicates] تم العثور على ${duplicates!.length} رقم مكرر',
+        );
 
         for (var entry in duplicates!.entries) {
-          print('   - الرقم: ${entry.key} مكرر ${entry.value.length} مرات');
+          debugPrint(
+            '   - الرقم: ${entry.key} مكرر ${entry.value.length} مرات',
+          );
           selectedContacts[entry.key] = entry.value.first;
           newNameControllers[entry.key] = TextEditingController();
           useNewName[entry.key] = false;
         }
       }
     } catch (e) {
-      print('❌ [_loadDuplicates] خطأ: $e');
+      debugPrint('❌ [_loadDuplicates] خطأ: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في قراءة الجهات: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('خطأ في قراءة الجهات: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
+    if (!mounted) return;
     setState(() => isLoading = false);
-    print('🧹 [_loadDuplicates] انتهى البحث');
+    debugPrint('🧹 [_loadDuplicates] انتهى البحث');
   }
 
   Future<void> _applyClean() async {
-    print('🧹 [_applyClean] بدء عملية دمج التكرارات');
+    debugPrint('🧹 [_applyClean] بدء عملية دمج التكرارات');
 
     if (duplicates == null || duplicates!.isEmpty) {
-      print('🧹 [_applyClean] مفيش مكررات للدمج');
+      debugPrint('🧹 [_applyClean] مفيش مكررات للدمج');
       return;
     }
 
@@ -78,14 +89,21 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
               .toList();
 
           String? newName;
-          if (useNewName[phone] == true && newNameControllers[phone]!.text.isNotEmpty) {
+          if (useNewName[phone] == true &&
+              newNameControllers[phone]!.text.isNotEmpty) {
             newName = newNameControllers[phone]!.text;
-            print('🧹 [_applyClean] الرقم $phone: استخدام اسم جديد "$newName"');
+            debugPrint(
+              '🧹 [_applyClean] الرقم $phone: استخدام اسم جديد "$newName"',
+            );
           } else {
-            print('🧹 [_applyClean] الرقم $phone: الاحتفاظ بـ "${selected.displayName}"');
+            debugPrint(
+              '🧹 [_applyClean] الرقم $phone: الاحتفاظ بـ "${selected.displayName}"',
+            );
           }
 
-          print('🧹 [_applyClean] دمج ${contacts.length} جهة اتصال للرقم $phone');
+          debugPrint(
+            '🧹 [_applyClean] دمج ${contacts.length} جهة اتصال للرقم $phone',
+          );
           await ContactsManager.mergeDuplicates(
             phoneNumber: phone,
             keepThisContact: selected,
@@ -96,17 +114,21 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
         }
       }
 
+      if (!mounted) return;
       Navigator.pop(context);
 
-      print('🧹 [_applyClean] ✅ تم دمج $mergedCount رقم مكرر بنجاح');
+      debugPrint('🧹 [_applyClean] ✅ تم دمج $mergedCount رقم مكرر بنجاح');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ تم تنظيف $mergedCount رقم مكرر بنجاح'), backgroundColor: Colors.green),
+        SnackBar(
+          content: Text('✅ تم تنظيف $mergedCount رقم مكرر بنجاح'),
+          backgroundColor: Colors.green,
+        ),
       );
 
       await _loadDuplicates();
-
     } catch (e) {
-      print('❌ [_applyClean] خطأ: $e');
+      debugPrint('❌ [_applyClean] خطأ: $e');
+      if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
@@ -116,7 +138,7 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
 
   @override
   void dispose() {
-    print('🧹 [CleanDuplicatesScreen] تنظيف الموارد');
+    debugPrint('🧹 [CleanDuplicatesScreen] تنظيف الموارد');
     for (var controller in newNameControllers.values) {
       controller.dispose();
     }
@@ -125,7 +147,7 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('🧹 [CleanDuplicatesScreen] بناء واجهة المستخدم');
+    debugPrint('🧹 [CleanDuplicatesScreen] بناء واجهة المستخدم');
     return Scaffold(
       appBar: AppBar(
         title: Text('تنظيف جهات الاتصال'),
@@ -143,136 +165,164 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
           ? Center(child: CircularProgressIndicator())
           : duplicates == null || duplicates!.isEmpty
           ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, size: 80, color: Colors.green),
-            SizedBox(height: 16),
-            Text('🎉 مفيش أرقام مكررة!', style: TextStyle(fontSize: 24)),
-            Text('جهات الاتصال نظيفة', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      )
-          : ListView.builder(
-        itemCount: duplicates!.length,
-        itemBuilder: (context, index) {
-          String phone = duplicates!.keys.elementAt(index);
-          List<Contact> contacts = duplicates![phone]!;
-
-          print('🧹 بناء عنصر للرقم $phone (${contacts.length} مرات)');
-
-          return Card(
-            margin: EdgeInsets.all(12),
-            child: Padding(
-              padding: EdgeInsets.all(12),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
+                  Icon(Icons.check_circle, size: 80, color: Colors.green),
+                  SizedBox(height: 16),
+                  Text('🎉 مفيش أرقام مكررة!', style: TextStyle(fontSize: 24)),
+                  Text(
+                    'جهات الاتصال نظيفة',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              itemCount: duplicates!.length,
+              itemBuilder: (context, index) {
+                String phone = duplicates!.keys.elementAt(index);
+                List<Contact> contacts = duplicates![phone]!;
+
+                return Card(
+                  margin: EdgeInsets.all(12),
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.phone, color: Colors.blue),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            phone,
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.phone, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  phone,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${contacts.length} مرات',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.orange,
-                            borderRadius: BorderRadius.circular(12),
+                        SizedBox(height: 16),
+
+                        Card(
+                          color: Colors.grey.shade50,
+                          child: Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Checkbox(
+                                      value: useNewName[phone],
+                                      onChanged: (val) {
+                                        setState(() {
+                                          useNewName[phone] = val ?? false;
+                                          if (!useNewName[phone]!) {
+                                            newNameControllers[phone]!.clear();
+                                          }
+                                        });
+                                      },
+                                    ),
+                                    Text('استخدام اسم جديد لكل الأرقام'),
+                                  ],
+                                ),
+                                if (useNewName[phone] == true) ...[
+                                  SizedBox(height: 8),
+                                  TextField(
+                                    controller: newNameControllers[phone],
+                                    decoration: InputDecoration(
+                                      hintText: 'اكتب الاسم الجديد...',
+                                      border: OutlineInputBorder(),
+                                      prefixIcon: Icon(Icons.person),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
-                          child: Text(
-                            '${contacts.length} مرات',
-                            style: TextStyle(color: Colors.white),
+                        ),
+
+                        SizedBox(height: 12),
+
+                        Text(
+                          'اختر الاسم اللي تحتفظ به:',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 8),
+
+                        RadioGroup<Contact>(
+                          groupValue: selectedContacts[phone],
+                          onChanged: (val) {
+                            if (useNewName[phone] == true) return;
+                            setState(() {
+                              selectedContacts[phone] = val;
+                            });
+                          },
+                          child: Column(
+                            children: [
+                              ...contacts.map((contact) {
+                                bool isSelected =
+                                    selectedContacts[phone]?.id == contact.id;
+                                String phoneNumber = contact.phones.isNotEmpty
+                                    ? contact.phones.first.number
+                                    : '';
+                                String displayName =
+                                    contact.displayName.isNotEmpty
+                                    ? contact.displayName
+                                    : 'بدون اسم';
+
+                                return RadioListTile<Contact>(
+                                  title: Text(
+                                    displayName,
+                                    style: TextStyle(fontSize: 16),
+                                  ),
+                                  subtitle: Text(phoneNumber),
+                                  value: contact,
+                                  enabled: useNewName[phone] != true,
+                                  activeColor: Colors.green,
+                                  selected: isSelected,
+                                  tileColor: isSelected
+                                      ? Colors.green.shade50
+                                      : null,
+                                );
+                              }),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  SizedBox(height: 16),
-
-                  Card(
-                    color: Colors.grey.shade50,
-                    child: Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: useNewName[phone],
-                                onChanged: (val) {
-                                  setState(() {
-                                    useNewName[phone] = val ?? false;
-                                    if (!useNewName[phone]!) {
-                                      newNameControllers[phone]!.clear();
-                                    }
-                                  });
-                                },
-                              ),
-                              Text('استخدام اسم جديد لكل الأرقام'),
-                            ],
-                          ),
-                          if (useNewName[phone] == true) ...[
-                            SizedBox(height: 8),
-                            TextField(
-                              controller: newNameControllers[phone],
-                              decoration: InputDecoration(
-                                hintText: 'اكتب الاسم الجديد...',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  SizedBox(height: 12),
-
-                  Text('اختر الاسم اللي تحتفظ به:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8),
-
-                  ...contacts.map((contact) {
-                    bool isSelected = selectedContacts[phone]?.id == contact.id;
-                    String phoneNumber = contact.phones.isNotEmpty ? contact.phones.first.number : '';
-
-                    return RadioListTile<Contact>(
-                      title: Text(
-                        contact.displayName.isNotEmpty ? contact.displayName : 'بدون اسم',
-                        style: TextStyle(fontSize: 16),
-                      ),
-                      subtitle: Text(phoneNumber),
-                      value: contact,
-                      groupValue: selectedContacts[phone],
-                      onChanged: useNewName[phone] == true
-                          ? null
-                          : (val) {
-                        setState(() {
-                          selectedContacts[phone] = val;
-                        });
-                      },
-                      activeColor: Colors.green,
-                      selected: isSelected,
-                      tileColor: isSelected ? Colors.green.shade50 : null,
-                    );
-                  }).toList(),
-                ],
-              ),
+                );
+              },
             ),
-          );
-        },
-      ),
     );
   }
 }

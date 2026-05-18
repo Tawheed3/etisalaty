@@ -20,8 +20,5 @@ class AppConstants {
 
   // Supported Countries
   static const List<String> supportedCountries = ['EG', 'SA'];
-  static const Map<String, String> countryCodes = {
-    'EG': '+20',
-    'SA': '+966',
-  };
+  static const Map<String, String> countryCodes = {'EG': '+20', 'SA': '+966'};
 }
