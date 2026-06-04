@@ -291,77 +291,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
   }
 
-  // ==================== سحب جميع الأرقام ====================
-
-  Future<void> _downloadContacts() async {
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('📥 بدء عملية سحب جميع الأرقام');
-    setState(() => _isDownloading = true);
-
-    try {
-      String? token = await LocalStorage.getToken();
-      if (token == null) {
-        _showMessage('من فضلك سجل الدخول مرة أخرى', Colors.red);
-        setState(() => _isDownloading = false);
-        return;
-      }
-
-      final result = await ApiService.downloadContacts(token);
-
-      if (result['status'] == 'success') {
-        List allContacts = result['data']['contacts'] ?? [];
-        _traceServerContacts(allContacts);
-
-        int totalFromServer = allContacts.length;
-        debugPrint('📊 إجمالي الأرقام من السيرفر: $totalFromServer');
-
-        Set<String> existingOnDevice = await getExistingPhoneNumbersOnDevice();
-        debugPrint('📱 الأرقام الموجودة على الجهاز: ${existingOnDevice.length}');
-
-        List newContacts = [];
-        int skippedCount = 0;
-        Map<String, int> countryStats = {'+20': 0, '+966': 0};
-
-        for (var contact in allContacts) {
-          String phoneNumber = _readContactField(contact, const ['phone_number', 'phoneNumber', 'phone', 'number', 'mobile']);
-          String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
-
-          String countryCode = PhoneNormalizer.getCountryCode(cleanNumber);
-          if (countryStats.containsKey(countryCode)) {
-            countryStats[countryCode] = countryStats[countryCode]! + 1;
-          }
-
-          if (existingOnDevice.contains(cleanNumber)) {
-            skippedCount++;
-          } else {
-            newContacts.add(contact);
-          }
-        }
-
-        int newContactsCount = newContacts.length;
-
-        if (newContactsCount == 0) {
-          _showMessage('📱 كل الأرقام موجودة بالفعل على جهازك', Colors.orange);
-        } else {
-          await _saveContactsToDevice(newContacts);
-          _showMessage(
-            '✅ تم تحميل $newContactsCount رقم جديد\n⚠️ تم تخطي $skippedCount رقم موجود مسبقاً',
-            Colors.green,
-          );
-        }
-
-        _showDownloadSummary(newContactsCount, skippedCount, totalFromServer, countryStats);
-      } else {
-        _showMessage(result['message'] ?? 'حدث خطأ', Colors.red);
-      }
-    } catch (e) {
-      _showMessage('خطأ: ${e.toString()}', Colors.red);
-    } finally {
-      setState(() => _isDownloading = false);
-      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    }
-  }
-
   // ==================== سحب الأرقام الموزعة ====================
 
   Future<void> _downloadAssignedContacts() async {
@@ -591,26 +520,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
 
-            // زر سحب جميع الأرقام
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: _isDownloading ? null : _downloadContacts,
-                icon: _isDownloading
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.cloud_download, size: 28),
-                label: Text(_isDownloading ? 'جاري السحب...' : 'سحب جميع الأرقام', style: const TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
             const SizedBox(height: 16),
-
             // زر سحب الأرقام الموزعة
             SizedBox(
               width: double.infinity,
@@ -621,7 +532,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.assignment_turned_in, size: 28),
                 label: Text(
-                  _isDownloadingAssigned ? 'جاري التحميل...' : 'سحب الأرقام الموزعة',
+                  _isDownloadingAssigned ? 'جاري التحميل...' : 'سحب الأرقام',
                   style: const TextStyle(fontSize: 18),
                 ),
                 style: ElevatedButton.styleFrom(
