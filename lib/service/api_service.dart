@@ -1,4 +1,4 @@
-// lib/services/api_service.dart
+// lib/service/api_service.dart
 import 'dart:async';
 import 'dart:convert';
 
@@ -36,10 +36,7 @@ class ApiService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-    } catch (_) {
-      // The server returned a non-JSON response.
-    }
-
+    } catch (_) {}
     return {
       'code': response.statusCode,
       'message': 'استجابة غير صالحة من السيرفر',
@@ -51,8 +48,8 @@ class ApiService {
     return message is String && message.isNotEmpty ? message : fallback;
   }
 
-  static Future<Map<String, dynamic>> login(String email,
-      String password,) async {
+  // ==================== LOGIN ====================
+  static Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final url = '${AppConstants.baseUrl}${AppConstants.loginEndpoint}';
       _debug('LOGIN request: $url');
@@ -107,10 +104,8 @@ class ApiService {
     }
   }
 
-// lib/service/api_service.dart
-
-  static Future<Map<String, dynamic>> uploadContacts(String token,
-      List<Map<String, String>> contacts,) async {
+  // ==================== UPLOAD CONTACTS ====================
+  static Future<Map<String, dynamic>> uploadContacts(String token, List<Map<String, String>> contacts) async {
     try {
       final url = '${AppConstants.baseUrl}${AppConstants.uploadContactsEndpoint}';
 
@@ -120,7 +115,6 @@ class ApiService {
       print('📦 عدد الأرقام المرسلة: ${contacts.length}');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // ✅ طباعة أول 20 رقم مع أسمائهم قبل الرفع
       print('📊 تفاصيل الأرقام المرسلة للسيرفر:');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -128,7 +122,7 @@ class ApiService {
         var contact = contacts[i];
         String phone = contact['phone_number'] ?? 'لا يوجد';
         String name = contact['contact_name'] ?? 'بدون اسم';
-        print('   ${i+1}. الرقم: $phone | الاسم: "$name"');
+        print('   ${i + 1}. الرقم: $phone | الاسم: "$name"');
       }
 
       if (contacts.length > 20) {
@@ -136,7 +130,6 @@ class ApiService {
       }
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      // ✅ طباعة أول 3 عناصر من الـ Body بشكل JSON
       List sampleContacts = contacts.take(3).toList();
       print('📦 عينة من البيانات المرسلة (أول 3 عناصر):');
       print(jsonEncode({'contacts': sampleContacts}));
@@ -209,13 +202,13 @@ class ApiService {
     }
   }
 
+  // ==================== DOWNLOAD ALL CONTACTS ====================
   static Future<Map<String, dynamic>> downloadContacts(String token) async {
     try {
-      final url = '${AppConstants.baseUrl}${AppConstants
-          .downloadContactsEndpoint}';
+      final url = '${AppConstants.baseUrl}${AppConstants.downloadContactsEndpoint}';
 
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      print('📤 DOWNLOAD REQUEST');
+      print('📤 DOWNLOAD ALL CONTACTS REQUEST');
       print('📍 URL: $url');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -226,8 +219,6 @@ class ApiService {
 
       print('📥 DOWNLOAD RESPONSE Status: ${response.statusCode}');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // ✅ طباعة الـ Response كاملاً
       print('📄 Full Response Body:');
       print('${response.body}');
       print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -237,13 +228,11 @@ class ApiService {
       if (response.statusCode == 200 && responseData['code'] == 200) {
         List contacts = responseData['data']['contacts'] ?? [];
 
-        // ✅ طباعة أول 20 رقم مع أسمائهم بالتفصيل
         print('📊 تفاصيل الأرقام من السيرفر:');
         print('   إجمالي الأرقام: ${contacts.length}');
         print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-        for (int i = 0; i <
-            (contacts.length > 20 ? 20 : contacts.length); i++) {
+        for (int i = 0; i < (contacts.length > 20 ? 20 : contacts.length); i++) {
           var contact = contacts[i];
           String phone = contact['phone_number'] ?? 'لا يوجد';
           String name = contact['contact_name'] ?? 'بدون اسم';
@@ -268,15 +257,13 @@ class ApiService {
         print('❌ Access Denied: ${responseData['message']}');
         return {
           'status': 'error',
-          'message': responseData['message'] ??
-              'غير مصرح لك - هذا الحساب ليس مسؤول أمن'
+          'message': responseData['message'] ?? 'غير مصرح لك - هذا الحساب ليس مسؤول أمن'
         };
       } else if (response.statusCode == 401) {
         print('❌ Unauthorized: ${responseData['message']}');
         return {
           'status': 'error',
-          'message': responseData['message'] ??
-              'انتهت صلاحية الجلسة، من فضلك سجل دخول مرة أخرى'
+          'message': responseData['message'] ?? 'انتهت صلاحية الجلسة، من فضلك سجل دخول مرة أخرى'
         };
       } else {
         print('❌ Download Failed: ${responseData['message']}');
@@ -287,6 +274,85 @@ class ApiService {
       }
     } catch (e) {
       print('❌ Download Exception: $e');
+      return {
+        'status': 'error',
+        'message': 'خطأ في الاتصال بالسيرفر: $e'
+      };
+    }
+  }
+
+  // ==================== DOWNLOAD ASSIGNED CONTACTS ====================
+  static Future<Map<String, dynamic>> downloadAssignedContacts(String token, int employeeId) async {
+    try {
+      final url = '${AppConstants.baseUrl}${AppConstants.downloadAssignedContactsEndpoint}/$employeeId';
+
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      print('📤 DOWNLOAD ASSIGNED CONTACTS REQUEST');
+      print('📍 URL: $url');
+      print('👤 Employee ID: $employeeId');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _getBaseHeaders(token: token),
+      );
+
+      print('📥 DOWNLOAD ASSIGNED RESPONSE Status: ${response.statusCode}');
+      print('📄 Full Response Body:');
+      print('${response.body}');
+      print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      final Map<String, dynamic> responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && responseData['code'] == 200) {
+        final data = responseData['data'];
+        List contacts = data['contacts'] ?? [];
+        final employee = data['employee'] ?? {};
+
+        print('📊 الأرقام الموزعة على الموظف: ${employee['name']} (ID: ${employee['id']})');
+        print('   إجمالي الأرقام: ${contacts.length}');
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        for (int i = 0; i < (contacts.length > 20 ? 20 : contacts.length); i++) {
+          var contact = contacts[i];
+          String phone = contact['phone_number'] ?? '';
+          String name = contact['contact_name'] ?? 'بدون اسم';
+          String marker = contact['ownership_marker'] ?? '';
+          print('   ${i+1}. الرقم: $phone | الاسم: "$name" | الملكية: "$marker"');
+        }
+
+        if (contacts.length > 20) {
+          print('   ... و ${contacts.length - 20} أرقام أخرى');
+        }
+        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        print('✅ Download Assigned Contacts Successful!');
+        return {
+          'status': 'success',
+          'data': {
+            'employee': employee,
+            'total_contacts': data['total_contacts'] ?? contacts.length,
+            'contacts': contacts,
+          }
+        };
+      } else if (response.statusCode == 403) {
+        return {
+          'status': 'error',
+          'message': responseData['message'] ?? 'غير مصرح لك - ليس لديك أرقام موزعة'
+        };
+      } else if (response.statusCode == 401) {
+        return {
+          'status': 'error',
+          'message': responseData['message'] ?? 'انتهت صلاحية الجلسة'
+        };
+      } else {
+        return {
+          'status': 'error',
+          'message': responseData['message'] ?? 'فشل سحب الأرقام الموزعة'
+        };
+      }
+    } catch (e) {
+      print('❌ Download Assigned Exception: $e');
       return {
         'status': 'error',
         'message': 'خطأ في الاتصال بالسيرفر: $e'

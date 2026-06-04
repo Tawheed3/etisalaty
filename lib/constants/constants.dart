@@ -1,4 +1,4 @@
-// lib/utils/constants.dart
+// lib/constants/constants.dart
 class AppConstants {
   static const String baseUrl = 'https://admin.rehltna.com/api/v1/etisalaty';
 
@@ -10,6 +10,8 @@ class AppConstants {
   static const String loginEndpoint = '/login';
   static const String uploadContactsEndpoint = '/upload-contacts';
   static const String downloadContactsEndpoint = '/download-all-contacts';
+  static const String downloadAssignedContactsEndpoint = '/download-assigned-contacts';
+  static const String distributionSummaryEndpoint = '/distribution-summary';
 
   // SharedPreferences Keys
   static const String tokenKey = 'user_token';
@@ -20,5 +22,8 @@ class AppConstants {
 
   // Supported Countries
   static const List<String> supportedCountries = ['EG', 'SA'];
-  static const Map<String, String> countryCodes = {'EG': '+20', 'SA': '+966'};
+  static const Map<String, String> countryCodes = {
+    'EG': '+20',
+    'SA': '+966',
+  };
 }

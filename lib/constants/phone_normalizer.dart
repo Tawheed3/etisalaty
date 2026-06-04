@@ -1,5 +1,6 @@
-// lib/utils/phone_normalizer.dart
+// lib/constants/phone_normalizer.dart
 class PhoneNormalizer {
+
   static String detectCountry(String phone) {
     String cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
 

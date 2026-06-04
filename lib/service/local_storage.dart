@@ -1,10 +1,9 @@
-// lib/services/local_storage.dart
-import 'package:flutter/foundation.dart';
+// lib/service/local_storage.dart
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/constants.dart';
-import '../constants/phone_normalizer.dart';
 
 class LocalStorage {
+
   static Future<void> saveUserData({
     required String token,
     required String role,
@@ -17,7 +16,7 @@ class LocalStorage {
     await prefs.setInt(AppConstants.userIdKey, userId);
     await prefs.setString(AppConstants.userNameKey, name);
 
-    debugPrint('💾 Saved user data: $name ($role)');
+    print('💾 Saved user data: $name ($role) - ID: $userId');
   }
 
   static Future<String?> getToken() async {
@@ -35,34 +34,23 @@ class LocalStorage {
     return prefs.getString(AppConstants.userNameKey);
   }
 
+  static Future<int?> getUserId() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(AppConstants.userIdKey);
+  }
+
   static Future<void> saveUploadedNumbers(List<String> numbers) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> existing =
-        prefs.getStringList(AppConstants.uploadedNumbersKey) ?? [];
+    List<String> existing = prefs.getStringList(AppConstants.uploadedNumbersKey) ?? [];
+    Set<String> allNumbers = {...existing, ...numbers};
+    await prefs.setStringList(AppConstants.uploadedNumbersKey, allNumbers.toList());
 
-    // توحيد كل الأرقام قبل الحفظ
-    Set<String> allNumbers = {};
-    for (var n in existing) {
-      allNumbers.add(PhoneNormalizer.normalize(n));
-    }
-    for (var n in numbers) {
-      allNumbers.add(PhoneNormalizer.normalize(n));
-    }
-
-    await prefs.setStringList(
-      AppConstants.uploadedNumbersKey,
-      allNumbers.toList(),
-    );
-
-    debugPrint('💾 Saved ${numbers.length} uploaded numbers (normalized)');
+    print('💾 Saved ${numbers.length} uploaded numbers');
   }
 
   static Future<List<String>> getUploadedNumbers() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? numbers = prefs.getStringList(
-      AppConstants.uploadedNumbersKey,
-    );
-    return numbers?.map((n) => PhoneNormalizer.normalize(n)).toList() ?? [];
+    return prefs.getStringList(AppConstants.uploadedNumbersKey) ?? [];
   }
 
   static Future<void> clearUserData() async {
@@ -73,7 +61,7 @@ class LocalStorage {
     await prefs.remove(AppConstants.userNameKey);
     await prefs.remove(AppConstants.uploadedNumbersKey);
 
-    debugPrint('🗑️ User data cleared');
+    print('🗑️ User data cleared');
   }
 
   static Future<bool> isLoggedIn() async {
