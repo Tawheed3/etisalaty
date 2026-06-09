@@ -130,7 +130,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
   }
 
-  // ==================== دوال مساعدة للحفظ والتحديث ====================
+  // ==================== دوال مساعدة للحفظ ====================
 
   Future<void> _createNewContact(String displayName, String phoneNumber) async {
     final Contact newContact = Contact()
@@ -141,41 +141,19 @@ class _SecurityScreenState extends State<SecurityScreen> {
     debugPrint('   📱 تم إنشاء جهة اتصال جديدة: "$displayName" - $phoneNumber');
   }
 
-  Future<void> _updateContactName(Contact contact, String newName) async {
-    contact.displayName = newName;
-    contact.name.first = newName;
-    await contact.update();
-    debugPrint('   ✏️ تم تحديث الاسم إلى: "$newName"');
-  }
+  // ==================== حفظ الأرقام (بدون فلترة) ====================
 
-  // ==================== حفظ الأرقام في الجهاز ====================
-
-  Future<void> _saveContactsToDevice(List contacts) async {
+  Future<void> _saveAllContactsToDevice(List contacts) async {
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('💾 بدء حفظ ${contacts.length} جهة اتصال');
+    debugPrint('💾 بدء حفظ ${contacts.length} جهة اتصال (بدون فلترة)');
 
     if (!await FlutterContacts.requestPermission()) {
       debugPrint('❌ مفيش إذن لحفظ جهات الاتصال');
       throw Exception('مفيش إذن لحفظ جهات الاتصال');
     }
 
-    // ✅ جلب جميع جهات الاتصال مع withAccounts: true عشان التحديث يشتغل على Android
-    List<Contact> allDeviceContacts = await FlutterContacts.getContacts(
-      withProperties: true,
-      withAccounts: true,
-    );
-
-    // إنشاء Map للبحث السريع: الرقم -> الـ Contact
-    Map<String, Contact> phoneToContact = {};
-    for (var contact in allDeviceContacts) {
-      for (var phone in contact.phones) {
-        String cleanNumber = PhoneNormalizer.normalize(phone.number);
-        phoneToContact[cleanNumber] = contact;
-      }
-    }
-
     int savedCount = 0;
-    int updatedCount = 0;
+    int duplicateCount = 0;
 
     for (int i = 0; i < contacts.length; i++) {
       var contactData = contacts[i];
@@ -184,63 +162,116 @@ class _SecurityScreenState extends State<SecurityScreen> {
       String ownershipMarker = contactData is Map ? (contactData['ownership_marker'] ?? '') : '';
       String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
 
-      // الاسم الجديد المطلوب حفظه
-      String newDisplayName = _formatNameWithMarker(contactName, ownershipMarker.isNotEmpty ? ownershipMarker : null);
+      // تنسيق الاسم بالشكل المطلوب: الاسم (الرمز - system)
+      String displayName = _formatNameWithMarker(contactName, ownershipMarker.isNotEmpty ? ownershipMarker : null);
 
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('📞 معالجة الرقم: $cleanNumber');
-      debugPrint('   الاسم الأصلي من السيرفر: "$contactName"');
-      debugPrint('   الاسم الجديد المقترح: "$newDisplayName"');
-      debugPrint('   الملكية: "$ownershipMarker"');
+      debugPrint('💾 حفظ #${i+1}/${contacts.length}');
+      debugPrint('   📞 الرقم: $cleanNumber');
+      debugPrint('   📝 الاسم: "$displayName"');
 
-      // البحث عن الرقم في جهات الاتصال الموجودة
-      Contact? existingContact = phoneToContact[cleanNumber];
-
-      if (existingContact == null) {
-        // الحالة 1: الرقم غير موجود → حفظ جديد
-        debugPrint('   ✅ حالة 1: رقم جديد، سيتم حفظه');
-        await _createNewContact(newDisplayName, cleanNumber);
+      try {
+        final Contact newContact = Contact()
+          ..displayName = displayName
+          ..name.first = displayName
+          ..phones = [Phone(cleanNumber, label: PhoneLabel.mobile)];
+        await newContact.insert();
         savedCount++;
-      } else {
-        // الرقم موجود، نتحقق من الاسم الحالي
-        String currentName = existingContact.displayName ?? '';
-        debugPrint('   📝 الاسم الحالي على الجهاز: "$currentName"');
-
-        // التحقق إذا كان الاسم الحالي يحتوي على "- system)"
-        bool hasSystemMarker = currentName.contains('- system)');
-
-        if (!hasSystemMarker) {
-          // الحالة 2: الرقم موجود بدون علامة system → حفظ جديد (مكرر)
-          debugPrint('   ✅ حالة 2: رقم موجود بدون علامة system، سيتم حفظه كجهة اتصال جديدة (مكررة)');
-          await _createNewContact(newDisplayName, cleanNumber);
-          savedCount++;
-        } else {
-          // الحالة 3: الرقم موجود وبه علامة system → تحديث الاسم والرمز بالكامل
-          if (currentName != newDisplayName) {
-            debugPrint('   ✅ حالة 3: رقم موجود به علامة system، سيتم تحديث الاسم إلى "$newDisplayName"');
-            await _updateContactName(existingContact, newDisplayName);
-            updatedCount++;
-          } else {
-            debugPrint('   ⏭️ الاسم نفسه، لا حاجة للتحديث');
-          }
-        }
+        debugPrint('   ✅ تم حفظ بنجاح');
+      } catch (e) {
+        debugPrint('   ❌ خطأ في حفظ: $e');
+        duplicateCount++;
       }
     }
 
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('🎉 النتيجة النهائية:');
-    debugPrint('   ✅ تم حفظ $savedCount جهة اتصال جديدة');
-    debugPrint('   🔄 تم تحديث $updatedCount جهة اتصال موجودة');
+    debugPrint('🎉 تم حفظ $savedCount جهة اتصال من أصل ${contacts.length}');
+    if (duplicateCount > 0) {
+      debugPrint('⚠️ $duplicateCount جهة اتصال مكررة (تم تخطيها أو خطأ)');
+    }
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }
+
+  // ==================== حذف الأرقام التي تحتوي على - system ====================
+
+  Future<void> _deleteAllSystemContacts() async {
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('🗑️ بدء حذف الأرقام التي تحتوي على "- system"');
+
+    // تأكيد من المستخدم
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف الأرقام'),
+        content: const Text('هل أنت متأكد من حذف جميع الأرقام التي تحتوي على "- system"؟\nلا يمكن التراجع عن هذا الإجراء.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (!await FlutterContacts.requestPermission()) {
+      _showMessage('مفيش إذن لحذف جهات الاتصال', Colors.red);
+      return;
+    }
+
+    // جلب جميع جهات الاتصال مع withAccounts: true عشان الحذف يشتغل
+    List<Contact> allContacts = await FlutterContacts.getContacts(
+      withProperties: true,
+      withAccounts: true,
+    );
+
+    int deletedCount = 0;
+    List<String> deletedNames = [];
+
+    for (var contact in allContacts) {
+      String displayName = contact.displayName ?? '';
+      if (displayName.contains('- system')) {
+        await contact.delete();
+        deletedCount++;
+        deletedNames.add(displayName);
+        debugPrint('   🗑️ تم حذف: "$displayName"');
+      }
+    }
+
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('✅ تم حذف $deletedCount جهة اتصال');
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (mounted && (savedCount > 0 || updatedCount > 0)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ تم حفظ $savedCount رقم جديد، تحديث $updatedCount رقم'),
-          backgroundColor: Colors.green,
-        ),
-      );
+    _showMessage('✅ تم حذف $deletedCount جهة اتصال تحتوي على "- system"', Colors.green);
+
+    if (deletedCount > 0) {
+      _showDeletedSummary(deletedCount, deletedNames);
     }
+  }
+
+  void _showDeletedSummary(int count, List<String> names) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('نتيجة الحذف'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('🗑️ تم حذف $count جهة اتصال'),
+            const SizedBox(height: 8),
+            const Text('الأجهزة المحذوفة:'),
+            ...names.take(10).map((name) => Text('• $name', style: const TextStyle(fontSize: 12))),
+            if (names.length > 10) Text('... و ${names.length - 10} أخرى'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً')),
+        ],
+      ),
+    );
   }
 
   // ==================== رفع الأرقام ====================
@@ -291,6 +322,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
   }
 
+
+
   // ==================== سحب الأرقام الموزعة ====================
 
   Future<void> _downloadAssignedContacts() async {
@@ -319,81 +352,15 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
         debugPrint('📊 إجمالي الأرقام الموزعة للموظف $employeeName: $total');
 
-        Set<String> existingNumbers = await getExistingPhoneNumbersOnDevice();
-
-        List newContacts = [];
-        List existingContacts = [];
-
-        for (var contact in contacts) {
-          String phone = contact['phone_number'] ?? '';
-          String cleanNumber = PhoneNormalizer.normalize(phone);
-          if (existingNumbers.contains(cleanNumber)) {
-            existingContacts.add(contact);
-          } else {
-            newContacts.add(contact);
-          }
-        }
-
-        if (newContacts.isNotEmpty) {
-          await _saveContactsToDevice(newContacts);
-        }
-
-        int updatedCount = 0;
-        int duplicatedCount = 0;
-
-        for (var contact in existingContacts) {
-          String phoneNumber = contact['phone_number'] ?? '';
-          String contactName = contact['contact_name'] ?? 'بدون اسم';
-          String ownershipMarker = contact is Map ? (contact['ownership_marker'] ?? '') : '';
-          String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
-          String newDisplayName = _formatNameWithMarker(contactName, ownershipMarker.isNotEmpty ? ownershipMarker : null);
-
-          // ✅ جلب جهات الاتصال مع withProperties, withPhoto, withAccounts
-          List<Contact> deviceContacts = await FlutterContacts.getContacts(
-            withProperties: true,
-            withPhoto: true,
-            withAccounts: true,
-          );
-          Contact? existingContact;
-          for (var deviceContact in deviceContacts) {
-            for (var phone in deviceContact.phones) {
-              if (PhoneNormalizer.normalize(phone.number) == cleanNumber) {
-                existingContact = deviceContact;
-                break;
-              }
-            }
-            if (existingContact != null) break;
-          }
-
-          if (existingContact != null) {
-            String currentName = existingContact.displayName ?? '';
-            bool hasSystemMarker = currentName.contains('- system)');
-
-            if (!hasSystemMarker) {
-              debugPrint('   ✅ حالة 2: رقم موجود بدون علامة system، سيتم حفظه كجهة اتصال جديدة (مكررة)');
-              await _createNewContact(newDisplayName, cleanNumber);
-              duplicatedCount++;
-            } else if (currentName != newDisplayName) {
-              debugPrint('   ✅ حالة 3: تحديث الاسم إلى "$newDisplayName"');
-              await _updateContactName(existingContact, newDisplayName);
-              updatedCount++;
-            }
-          } else {
-            await _createNewContact(newDisplayName, cleanNumber);
-            duplicatedCount++;
-          }
-        }
-
-        int newCount = newContacts.length;
+        // ✅ حفظ كل الأرقام بدون فلترة (حتى لو موجودة)
+        await _saveAllContactsToDevice(contacts);
 
         _showMessage(
-          '✅ تم تحميل $newCount رقم جديد\n'
-              '🔄 تم تحديث $updatedCount رقم\n'
-              '📱 تم إضافة $duplicatedCount رقم كنسخة مكررة (للدمج لاحقاً)',
+          '✅ تم تحميل $total رقم بنجاح',
           Colors.green,
         );
 
-        _showAssignedSummary(newCount, updatedCount, duplicatedCount, total, employeeName);
+        _showAssignedSummary(total, employeeName);
       } else {
         _showMessage(result['message'] ?? 'حدث خطأ', Colors.red);
       }
@@ -418,13 +385,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
           children: [
             Text('📊 إجمالي الأرقام من السيرفر: $total'),
             const SizedBox(height: 8),
-            Text('✅ أرقام جديدة تم تحميلها: $newCount', style: TextStyle(color: Colors.green)),
+            Text('✅ أرقام تم تحميلها: $newCount', style: TextStyle(color: Colors.green)),
             Text('   🇪🇬 مصر: ${countryStats['+20'] ?? 0} رقم', style: TextStyle(fontSize: 12)),
             Text('   🇸🇦 السعودية: ${countryStats['+966'] ?? 0} رقم', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            Text('⚠️ أرقام موجودة مسبقاً وتم تخطيها: $skippedCount', style: TextStyle(color: Colors.orange)),
             const SizedBox(height: 16),
-            const Text('💾 تم حفظ الأرقام الجديدة في جهات اتصال هاتفك'),
+            const Text('💾 تم حفظ الأرقام في جهات اتصال هاتفك'),
           ],
         ),
         actions: [
@@ -434,7 +399,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
     );
   }
 
-  void _showAssignedSummary(int newCount, int updatedCount, int duplicatedCount, int total, String employeeName) {
+  void _showAssignedSummary(int total, String employeeName) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -445,12 +410,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
           children: [
             Text('👤 الموظف: $employeeName'),
             Text('📊 إجمالي الأرقام الموزعة: $total'),
-            const SizedBox(height: 8),
-            Text('✅ أرقام جديدة تم تحميلها: $newCount', style: TextStyle(color: Colors.green)),
-            Text('🔄 أرقام تم تحديثها: $updatedCount', style: TextStyle(color: Colors.blue)),
-            Text('📱 أرقام مكررة تمت إضافتها (للدمج لاحقاً): $duplicatedCount', style: TextStyle(color: Colors.orange)),
             const SizedBox(height: 16),
-            const Text('💾 تم حفظ وتحديث الأرقام في جهات اتصال هاتفك'),
+            const Text('✅ تم تحميل جميع الأرقام بنجاح'),
+            const Text('💾 تم حفظ الأرقام في جهات اتصال هاتفك'),
             const Text('🏷️ الأرقام تحمل علامة (الرمز - system)'),
           ],
         ),
@@ -522,6 +484,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
             ),
 
             const SizedBox(height: 16),
+
             // زر سحب الأرقام الموزعة
             SizedBox(
               width: double.infinity,
@@ -532,7 +495,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.assignment_turned_in, size: 28),
                 label: Text(
-                  _isDownloadingAssigned ? 'جاري التحميل...' : 'سحب الأرقام',
+                  _isDownloadingAssigned ? 'جاري التحميل...' : 'سحب الأرقام الموزعة',
                   style: const TextStyle(fontSize: 18),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -556,6 +519,23 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 label: const Text('تنظيف الأرقام المكررة', style: TextStyle(fontSize: 18)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // زر حذف الأرقام التي تحتوي على - system
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: ElevatedButton.icon(
+                onPressed: _deleteAllSystemContacts,
+                icon: const Icon(Icons.delete_sweep, size: 28),
+                label: const Text('حذف الأرقام (system)', style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
