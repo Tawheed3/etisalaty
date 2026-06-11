@@ -1,7 +1,6 @@
 // lib/screens/security_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
-import '../constants/phone_normalizer.dart';
 import '../service/api_service.dart';
 import '../service/contacts_service.dart';
 import '../service/local_storage.dart';
@@ -23,6 +22,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   bool _isUploading = false;
   bool _isDownloading = false;
   bool _isDownloadingAssigned = false;
+  bool _isDeleting = false;
   String? _userName;
 
   @override
@@ -117,7 +117,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
       Set<String> existingNumbers = {};
       for (var contact in deviceContacts) {
         for (var phone in contact.phones) {
-          existingNumbers.add(PhoneNormalizer.normalize(phone.number));
+          existingNumbers.add(phone.number.trim());
         }
       }
 
@@ -160,9 +160,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
       String phoneNumber = _readContactField(contactData, const ['phone_number', 'phoneNumber', 'phone', 'number', 'mobile']);
       String contactName = _readContactField(contactData, const ['contact_name', 'contactName', 'name', 'display_name', 'displayName']);
       String ownershipMarker = contactData is Map ? (contactData['ownership_marker'] ?? '') : '';
-      String cleanNumber = PhoneNormalizer.normalize(phoneNumber);
+      String cleanNumber = phoneNumber.trim();
 
-      // تنسيق الاسم بالشكل المطلوب: الاسم (الرمز - system)
       String displayName = _formatNameWithMarker(contactName, ownershipMarker.isNotEmpty ? ownershipMarker : null);
 
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -198,7 +197,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     debugPrint('🗑️ بدء حذف الأرقام التي تحتوي على "- system"');
 
-    // تأكيد من المستخدم
     bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -216,38 +214,58 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
     if (confirm != true) return;
 
-    if (!await FlutterContacts.requestPermission()) {
-      _showMessage('مفيش إذن لحذف جهات الاتصال', Colors.red);
-      return;
-    }
+    setState(() => _isDeleting = true);
 
-    // جلب جميع جهات الاتصال مع withAccounts: true عشان الحذف يشتغل
-    List<Contact> allContacts = await FlutterContacts.getContacts(
-      withProperties: true,
-      withAccounts: true,
-    );
+    try {
+      if (!await FlutterContacts.requestPermission()) {
+        _showMessage('مفيش إذن لحذف جهات الاتصال', Colors.red);
+        setState(() => _isDeleting = false);
+        return;
+      }
 
-    int deletedCount = 0;
-    List<String> deletedNames = [];
+      List<Contact> allContacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withAccounts: true,
+      );
 
-    for (var contact in allContacts) {
-      String displayName = contact.displayName ?? '';
-      if (displayName.contains('- system')) {
+      List<Contact> contactsToDelete = allContacts.where((contact) {
+        String displayName = contact.displayName ?? '';
+        return displayName.contains('- system');
+      }).toList();
+
+      int totalToDelete = contactsToDelete.length;
+      int deletedCount = 0;
+      List<String> deletedNames = [];
+
+      for (int i = 0; i < contactsToDelete.length; i++) {
+        var contact = contactsToDelete[i];
+        String displayName = contact.displayName ?? '';
+
         await contact.delete();
         deletedCount++;
         deletedNames.add(displayName);
-        debugPrint('   🗑️ تم حذف: "$displayName"');
+        debugPrint('   🗑️ تم حذف ($deletedCount/$totalToDelete): "$displayName"');
+
+        if (i % 5 == 0 && mounted) {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
       }
-    }
 
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('✅ تم حذف $deletedCount جهة اتصال');
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('✅ تم حذف $deletedCount جهة اتصال');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    _showMessage('✅ تم حذف $deletedCount جهة اتصال تحتوي على "- system"', Colors.green);
+      _showMessage('✅ تم حذف $deletedCount جهة اتصال تحتوي على "- system"', Colors.green);
 
-    if (deletedCount > 0) {
-      _showDeletedSummary(deletedCount, deletedNames);
+      if (deletedCount > 0) {
+        _showDeletedSummary(deletedCount, deletedNames);
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ أثناء الحذف: $e');
+      _showMessage('خطأ أثناء الحذف: ${e.toString()}', Colors.red);
+    } finally {
+      setState(() => _isDeleting = false);
     }
   }
 
@@ -322,8 +340,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
   }
 
-
-
   // ==================== سحب الأرقام الموزعة ====================
 
   Future<void> _downloadAssignedContacts() async {
@@ -352,7 +368,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
         debugPrint('📊 إجمالي الأرقام الموزعة للموظف $employeeName: $total');
 
-        // ✅ حفظ كل الأرقام بدون فلترة (حتى لو موجودة)
         await _saveAllContactsToDevice(contacts);
 
         _showMessage(
@@ -373,31 +388,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   // ==================== دوال عرض النتائج ====================
-
-  void _showDownloadSummary(int newCount, int skippedCount, int total, Map<String, int> countryStats) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('نتيجة التحميل'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('📊 إجمالي الأرقام من السيرفر: $total'),
-            const SizedBox(height: 8),
-            Text('✅ أرقام تم تحميلها: $newCount', style: TextStyle(color: Colors.green)),
-            Text('   🇪🇬 مصر: ${countryStats['+20'] ?? 0} رقم', style: TextStyle(fontSize: 12)),
-            Text('   🇸🇦 السعودية: ${countryStats['+966'] ?? 0} رقم', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: 16),
-            const Text('💾 تم حفظ الأرقام في جهات اتصال هاتفك'),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً')),
-        ],
-      ),
-    );
-  }
 
   void _showAssignedSummary(int total, String employeeName) {
     showDialog(
@@ -530,9 +520,14 @@ class _SecurityScreenState extends State<SecurityScreen> {
               width: double.infinity,
               height: 60,
               child: ElevatedButton.icon(
-                onPressed: _deleteAllSystemContacts,
-                icon: const Icon(Icons.delete_sweep, size: 28),
-                label: const Text('حذف الأرقام (system)', style: TextStyle(fontSize: 18)),
+                onPressed: _isDeleting ? null : _deleteAllSystemContacts,
+                icon: _isDeleting
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.delete_sweep, size: 28),
+                label: Text(
+                  _isDeleting ? 'جاري الحذف...' : 'حذف الأرقام (system)',
+                  style: const TextStyle(fontSize: 18),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,

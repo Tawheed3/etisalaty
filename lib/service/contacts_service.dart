@@ -1,6 +1,5 @@
 // lib/service/contacts_service.dart
 import 'package:flutter_contacts/flutter_contacts.dart';
-import '../constants/phone_normalizer.dart';
 
 class ContactsManager {
 
@@ -19,15 +18,12 @@ class ContactsManager {
     print('📱 [ContactsManager.getAllContacts] تم جلب ${contacts.length} جهة اتصال');
 
     List<Map<String, String>> formattedContacts = [];
-    Set<String> uniqueNumbers = {};
 
     for (var contact in contacts) {
       for (var phone in contact.phones) {
-        String number = PhoneNormalizer.normalize(phone.number);
+        String number = phone.number.trim();
 
-        if (number.length >= 9 && !uniqueNumbers.contains(number)) {
-          uniqueNumbers.add(number);
-
+        if (number.isNotEmpty) {
           String contactName = contact.displayName;
           if (contactName.trim().isEmpty) {
             contactName = 'بدون اسم';
@@ -41,7 +37,7 @@ class ContactsManager {
       }
     }
 
-    print('📱 [ContactsManager.getAllContacts] تم تنسيق ${formattedContacts.length} رقم فريد');
+    print('📱 [ContactsManager.getAllContacts] تم تنسيق ${formattedContacts.length} رقم (مع التكرارات)');
     return formattedContacts;
   }
 
@@ -63,7 +59,7 @@ class ContactsManager {
 
     for (var contact in allContacts) {
       for (var phone in contact.phones) {
-        String cleanNumber = PhoneNormalizer.normalize(phone.number);
+        String cleanNumber = phone.number.trim();
 
         phoneToContacts.putIfAbsent(cleanNumber, () => []);
 
