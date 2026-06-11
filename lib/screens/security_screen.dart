@@ -191,7 +191,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
-  // ==================== حذف الأرقام التي تحتوي على - system ====================
+  // ==================== حذف الأرقام التي تحتوي على - system (الزر القديم) ====================
 
   Future<void> _deleteAllSystemContacts() async {
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -269,6 +269,115 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
   }
 
+  // ==================== حذف الأرقام التي لا تحتوي على - system ولها نظير به - system (الزر الجديد) ====================
+
+  Future<void> _deleteNonSystemContactsWithSystemDuplicate() async {
+    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    debugPrint('🗑️ بدء حذف الأرقام التي لا تحتوي على "- system" ولها نظير به "- system"');
+
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف الأرقام المكررة'),
+        content: const Text(
+            'هل أنت متأكد من حذف جميع الأرقام التي لا تحتوي على "- system" '
+                'ولها نفس الرقم موجود بالفعل به "- system"؟\nلا يمكن التراجع عن هذا الإجراء.'
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      if (!await FlutterContacts.requestPermission()) {
+        _showMessage('مفيش إذن لحذف جهات الاتصال', Colors.red);
+        setState(() => _isDeleting = false);
+        return;
+      }
+
+      List<Contact> allContacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withAccounts: true,
+      );
+
+      // تجميع الأرقام حسب الرقم
+      Map<String, List<Contact>> numberToContacts = {};
+      for (var contact in allContacts) {
+        for (var phone in contact.phones) {
+          String number = phone.number.trim();
+          numberToContacts.putIfAbsent(number, () => []);
+          numberToContacts[number]!.add(contact);
+        }
+      }
+
+      // تحديد جهات الاتصال التي سيتم حذفها
+      List<Contact> contactsToDelete = [];
+
+      for (var entry in numberToContacts.entries) {
+        List<Contact> contacts = entry.value;
+
+        // هل فيه جهة اتصال بهذا الرقم تحتوي على "- system"؟
+        bool hasSystemContact = contacts.any((contact) {
+          String name = contact.displayName ?? '';
+          return name.contains('- system');
+        });
+
+        if (hasSystemContact) {
+          // أضف كل جهات الاتصال التي لا تحتوي على "- system" للحذف
+          for (var contact in contacts) {
+            String name = contact.displayName ?? '';
+            if (!name.contains('- system')) {
+              contactsToDelete.add(contact);
+            }
+          }
+        }
+      }
+
+      int totalToDelete = contactsToDelete.length;
+      int deletedCount = 0;
+      List<String> deletedNames = [];
+
+      for (int i = 0; i < contactsToDelete.length; i++) {
+        var contact = contactsToDelete[i];
+        String displayName = contact.displayName ?? '';
+
+        await contact.delete();
+        deletedCount++;
+        deletedNames.add(displayName);
+        debugPrint('   🗑️ تم حذف ($deletedCount/$totalToDelete): "$displayName"');
+
+        if (i % 5 == 0 && mounted) {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      debugPrint('✅ تم حذف $deletedCount جهة اتصال');
+      debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      _showMessage('✅ تم حذف $deletedCount جهة اتصال مكررة (بدون - system)', Colors.green);
+
+      if (deletedCount > 0) {
+        _showNonSystemDeletedSummary(deletedCount, deletedNames);
+      }
+    } catch (e) {
+      debugPrint('❌ خطأ أثناء الحذف: $e');
+      _showMessage('خطأ أثناء الحذف: ${e.toString()}', Colors.red);
+    } finally {
+      setState(() => _isDeleting = false);
+    }
+  }
+
   void _showDeletedSummary(int count, List<String> names) {
     showDialog(
       context: context,
@@ -279,6 +388,29 @@ class _SecurityScreenState extends State<SecurityScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('🗑️ تم حذف $count جهة اتصال'),
+            const SizedBox(height: 8),
+            const Text('الأجهزة المحذوفة:'),
+            ...names.take(10).map((name) => Text('• $name', style: const TextStyle(fontSize: 12))),
+            if (names.length > 10) Text('... و ${names.length - 10} أخرى'),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً')),
+        ],
+      ),
+    );
+  }
+
+  void _showNonSystemDeletedSummary(int count, List<String> names) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('نتيجة حذف الأرقام المكررة'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('🗑️ تم حذف $count جهة اتصال (بدون - system)'),
             const SizedBox(height: 8),
             const Text('الأجهزة المحذوفة:'),
             ...names.take(10).map((name) => Text('• $name', style: const TextStyle(fontSize: 12))),
@@ -515,7 +647,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
             ),
             const SizedBox(height: 16),
 
-            // زر حذف الأرقام التي تحتوي على - system
+            // زر حذف الأرقام التي تحتوي على - system (القديم)
             SizedBox(
               width: double.infinity,
               height: 60,
@@ -530,6 +662,28 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // زر حذف الأرقام المكررة (الجديد) - اللي بدون - system ولها نظير به - system
+            SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: ElevatedButton.icon(
+                onPressed: _isDeleting ? null : _deleteNonSystemContactsWithSystemDuplicate,
+                icon: _isDeleting
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.clean_hands, size: 28),
+                label: Text(
+                  _isDeleting ? 'جاري الحذف...' : 'حذف المكررات (بدون system)',
+                  style: const TextStyle(fontSize: 18),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepOrange,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
