@@ -22,7 +22,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
   bool _isUploading = false;
   bool _isDownloading = false;
   bool _isDownloadingAssigned = false;
-  bool _isDeleting = false;
+  bool _isDeletingSystem = false;
+  bool _isDeletingNonSystem = false;
   String? _userName;
 
   @override
@@ -52,6 +53,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
     }
     return name;
   }
+
+  // Strips spaces, dashes, parentheses, etc. so "+966 56 956 4210" and
+  // "+966569564210" hash to the same key when grouping by number.
+  String _normalizePhone(String number) =>
+      number.replaceAll(RegExp(r'[^\d+]'), '');
 
   String _readContactField(dynamic contactData, List<String> keys) {
     if (contactData is! Map) return '';
@@ -214,12 +220,12 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
     if (confirm != true) return;
 
-    setState(() => _isDeleting = true);
+    setState(() => _isDeletingSystem = true);
 
     try {
       if (!await FlutterContacts.requestPermission()) {
         _showMessage('مفيش إذن لحذف جهات الاتصال', Colors.red);
-        setState(() => _isDeleting = false);
+        setState(() => _isDeletingSystem = false);
         return;
       }
 
@@ -265,7 +271,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
       debugPrint('❌ خطأ أثناء الحذف: $e');
       _showMessage('خطأ أثناء الحذف: ${e.toString()}', Colors.red);
     } finally {
-      setState(() => _isDeleting = false);
+      setState(() => _isDeletingSystem = false);
     }
   }
 
@@ -295,12 +301,12 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
     if (confirm != true) return;
 
-    setState(() => _isDeleting = true);
+    setState(() => _isDeletingNonSystem = true);
 
     try {
       if (!await FlutterContacts.requestPermission()) {
         _showMessage('مفيش إذن لحذف جهات الاتصال', Colors.red);
-        setState(() => _isDeleting = false);
+        setState(() => _isDeletingNonSystem = false);
         return;
       }
 
@@ -309,11 +315,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
         withAccounts: true,
       );
 
-      // تجميع الأرقام حسب الرقم
+      // تجميع الأرقام حسب الرقم (بعد التطبيع لتوحيد الفراغات والشرطات)
       Map<String, List<Contact>> numberToContacts = {};
       for (var contact in allContacts) {
         for (var phone in contact.phones) {
-          String number = phone.number.trim();
+          String number = _normalizePhone(phone.number);
           numberToContacts.putIfAbsent(number, () => []);
           numberToContacts[number]!.add(contact);
         }
@@ -374,7 +380,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
       debugPrint('❌ خطأ أثناء الحذف: $e');
       _showMessage('خطأ أثناء الحذف: ${e.toString()}', Colors.red);
     } finally {
-      setState(() => _isDeleting = false);
+      setState(() => _isDeletingNonSystem = false);
     }
   }
 
@@ -652,12 +658,12 @@ class _SecurityScreenState extends State<SecurityScreen> {
               width: double.infinity,
               height: 60,
               child: ElevatedButton.icon(
-                onPressed: _isDeleting ? null : _deleteAllSystemContacts,
-                icon: _isDeleting
+                onPressed: (_isDeletingSystem || _isDeletingNonSystem) ? null : _deleteAllSystemContacts,
+                icon: _isDeletingSystem
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.delete_sweep, size: 28),
                 label: Text(
-                  _isDeleting ? 'جاري الحذف...' : 'حذف الأرقام (system)',
+                  _isDeletingSystem ? 'جاري الحذف...' : 'حذف الأرقام (system)',
                   style: const TextStyle(fontSize: 18),
                 ),
                 style: ElevatedButton.styleFrom(
@@ -674,12 +680,12 @@ class _SecurityScreenState extends State<SecurityScreen> {
               width: double.infinity,
               height: 60,
               child: ElevatedButton.icon(
-                onPressed: _isDeleting ? null : _deleteNonSystemContactsWithSystemDuplicate,
-                icon: _isDeleting
+                onPressed: (_isDeletingSystem || _isDeletingNonSystem) ? null : _deleteNonSystemContactsWithSystemDuplicate,
+                icon: _isDeletingNonSystem
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.clean_hands, size: 28),
                 label: Text(
-                  _isDeleting ? 'جاري الحذف...' : 'حذف المكررات (بدون system)',
+                  _isDeletingNonSystem ? 'جاري الحذف...' : 'حذف المكررات (بدون system)',
                   style: const TextStyle(fontSize: 18),
                 ),
                 style: ElevatedButton.styleFrom(
