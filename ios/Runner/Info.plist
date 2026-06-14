@@ -26,11 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	
-	<!-- ✅ أضف هذين السطرين لطلب صلاحية جهات الاتصال -->
 	<key>NSContactsUsageDescription</key>
 	<string>نحتاج للوصول إلى جهات الاتصال لرفعها وحفظها في النظام</string>
-	
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
