@@ -6,6 +6,7 @@ import '../service/contacts_service.dart';
 import '../service/local_storage.dart';
 import 'clean_duplicates_screen.dart';
 import '../main.dart';
+import '../utils/saudi_phone_number.dart';
 
 class SecurityScreen extends StatefulWidget {
   const SecurityScreen({super.key});
@@ -24,6 +25,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   bool _isDownloadingAssigned = false;
   bool _isDeletingSystem = false;
   bool _isDeletingNonSystem = false;
+  bool _isRenamingSystem = false;
   String? _userName;
 
   @override
@@ -47,6 +49,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   String _formatNameWithMarker(String originalName, String? marker) {
     String name = originalName.trim();
     if (name.isEmpty) name = 'بدون اسم';
+    name = SaudiPhoneNumber.removeOwnershipSystemSuffix(name) ?? name;
 
     if (marker != null && marker.isNotEmpty) {
       return '$name ($marker - system)';
@@ -54,10 +57,122 @@ class _SecurityScreenState extends State<SecurityScreen> {
     return name;
   }
 
-  // Strips spaces, dashes, parentheses, etc. so "+966 56 956 4210" and
-  // "+966569564210" hash to the same key when grouping by number.
-  String _normalizePhone(String number) =>
-      number.replaceAll(RegExp(r'[^\d+]'), '');
+  bool _isSystemContact(Contact contact) {
+    return SaudiPhoneNumber.isSystemContactName(contact.displayName);
+  }
+
+  bool _hasSaudiMobileNumber(Contact contact) {
+    return contact.phones.any(
+      (phone) => SaudiPhoneNumber.canonicalize(phone.number) != null,
+    );
+  }
+
+  Map<String, List<Contact>> _groupContactsBySaudiNumber(
+    List<Contact> contacts,
+  ) {
+    final grouped = <String, List<Contact>>{};
+
+    for (final contact in contacts) {
+      for (final phone in contact.phones) {
+        final number = SaudiPhoneNumber.canonicalize(phone.number);
+        if (number == null) continue;
+
+        final matches = grouped.putIfAbsent(number, () => []);
+        if (!matches.any((item) => item.id == contact.id)) {
+          matches.add(contact);
+        }
+      }
+    }
+
+    return grouped;
+  }
+
+  Future<void> _renameSystemContacts() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('إزالة علامة system'),
+        content: const Text(
+          'سيتم تغيير أسماء جهات الاتصال السعودية فقط، مثل:\n'
+          'Ahmed (ZM - system) ← Ahmed\n\n'
+          'لن يتم حذف أي جهة اتصال أو رقم.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('إعادة التسمية'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+    setState(() => _isRenamingSystem = true);
+
+    var renamedCount = 0;
+    var failedCount = 0;
+
+    try {
+      if (!await FlutterContacts.requestPermission()) {
+        _showMessage('مفيش إذن لتعديل جهات الاتصال', Colors.red);
+        return;
+      }
+
+      final contacts = await FlutterContacts.getContacts(
+        withProperties: true,
+        withAccounts: true,
+      );
+
+      for (final contact in contacts) {
+        if (!_hasSaudiMobileNumber(contact)) continue;
+
+        final renamed = SaudiPhoneNumber.removeOwnershipSystemSuffix(
+          contact.displayName,
+        );
+        if (renamed == null) continue;
+
+        try {
+          contact.displayName = renamed;
+
+          final renamedFirst = SaudiPhoneNumber.removeOwnershipSystemSuffix(
+            contact.name.first,
+          );
+          if (renamedFirst != null) {
+            contact.name.first = renamedFirst;
+          } else {
+            contact.name.first = renamed;
+            contact.name.middle = '';
+            contact.name.last = '';
+            contact.name.prefix = '';
+            contact.name.suffix = '';
+          }
+
+          await contact.update();
+          renamedCount++;
+        } catch (error) {
+          failedCount++;
+          debugPrint('تعذر إعادة تسمية ${contact.displayName}: $error');
+        }
+      }
+
+      if (!mounted) return;
+      final failureText = failedCount == 0 ? '' : '\nتعذر تعديل: $failedCount';
+      _showMessage(
+        '✅ تم تعديل $renamedCount جهة اتصال$failureText',
+        failedCount == 0 ? Colors.green : Colors.orange,
+      );
+    } catch (error) {
+      if (mounted) {
+        _showMessage('خطأ أثناء إعادة التسمية: $error', Colors.red);
+      }
+    } finally {
+      if (mounted) setState(() => _isRenamingSystem = false);
+    }
+  }
 
   String _readContactField(dynamic contactData, List<String> keys) {
     if (contactData is! Map) return '';
@@ -92,15 +207,18 @@ class _SecurityScreenState extends State<SecurityScreen> {
     for (int i = 0; i < contacts.length; i++) {
       final contact = contacts[i];
       final rawName = _readContactField(contact, const [
-        'contact_name', 'contactName', 'name', 'display_name', 'displayName'
+        'contact_name',
+        'contactName',
+        'name',
+        'display_name',
+        'displayName'
       ]);
-      final rawPhone = _readContactField(contact, const [
-        'phone_number', 'phoneNumber', 'phone', 'number', 'mobile'
-      ]);
+      final rawPhone = _readContactField(contact,
+          const ['phone_number', 'phoneNumber', 'phone', 'number', 'mobile']);
       final marker = contact is Map ? (contact['ownership_marker'] ?? '') : '';
       _traceContact(
         'SERVER_CONTACT index=$i keys=${_contactKeys(contact)} '
-            'rawName="$rawName" rawPhone="$rawPhone" marker="$marker"',
+        'rawName="$rawName" rawPhone="$rawPhone" marker="$marker"',
       );
     }
   }
@@ -123,7 +241,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
       Set<String> existingNumbers = {};
       for (var contact in deviceContacts) {
         for (var phone in contact.phones) {
-          existingNumbers.add(phone.number.trim());
+          final number = SaudiPhoneNumber.canonicalize(phone.number);
+          if (number != null) existingNumbers.add(number);
         }
       }
 
@@ -163,15 +282,29 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
     for (int i = 0; i < contacts.length; i++) {
       var contactData = contacts[i];
-      String phoneNumber = _readContactField(contactData, const ['phone_number', 'phoneNumber', 'phone', 'number', 'mobile']);
-      String contactName = _readContactField(contactData, const ['contact_name', 'contactName', 'name', 'display_name', 'displayName']);
-      String ownershipMarker = contactData is Map ? (contactData['ownership_marker'] ?? '') : '';
-      String cleanNumber = phoneNumber.trim();
+      String phoneNumber = _readContactField(contactData,
+          const ['phone_number', 'phoneNumber', 'phone', 'number', 'mobile']);
+      String contactName = _readContactField(contactData, const [
+        'contact_name',
+        'contactName',
+        'name',
+        'display_name',
+        'displayName'
+      ]);
+      String ownershipMarker =
+          contactData is Map ? (contactData['ownership_marker'] ?? '') : '';
+      final cleanNumber = SaudiPhoneNumber.canonicalize(phoneNumber);
+      if (cleanNumber == null) {
+        debugPrint('   ⚠️ تم تخطي رقم سعودي غير صالح: $phoneNumber');
+        duplicateCount++;
+        continue;
+      }
 
-      String displayName = _formatNameWithMarker(contactName, ownershipMarker.isNotEmpty ? ownershipMarker : null);
+      String displayName = _formatNameWithMarker(
+          contactName, ownershipMarker.isNotEmpty ? ownershipMarker : null);
 
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      debugPrint('💾 حفظ #${i+1}/${contacts.length}');
+      debugPrint('💾 حفظ #${i + 1}/${contacts.length}');
       debugPrint('   📞 الرقم: $cleanNumber');
       debugPrint('   📝 الاسم: "$displayName"');
 
@@ -207,9 +340,15 @@ class _SecurityScreenState extends State<SecurityScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('حذف الأرقام'),
-        content: const Text('هل أنت متأكد من حذف جميع الأرقام التي تحتوي على "- system"؟\nلا يمكن التراجع عن هذا الإجراء.'),
+        content: const Text(
+          'سيتم حذف جهة اتصال system فقط إذا كان نفس الرقم موجوداً '
+          'أيضاً بدون system.\n'
+          'الأرقام الموجودة بنسخة system فقط لن يتم حذفها.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('حذف', style: TextStyle(color: Colors.red)),
@@ -234,23 +373,34 @@ class _SecurityScreenState extends State<SecurityScreen> {
         withAccounts: true,
       );
 
-      List<Contact> contactsToDelete = allContacts.where((contact) {
-        String displayName = contact.displayName ?? '';
-        return displayName.contains('- system');
-      }).toList();
+      final contactsToDelete = <String, Contact>{};
+      final groupedContacts = _groupContactsBySaudiNumber(allContacts);
 
-      int totalToDelete = contactsToDelete.length;
+      for (final contacts in groupedContacts.values) {
+        final hasSystem = contacts.any(_isSystemContact);
+        final hasNonSystem =
+            contacts.any((contact) => !_isSystemContact(contact));
+        if (!hasSystem || !hasNonSystem) continue;
+
+        for (final contact in contacts.where(_isSystemContact)) {
+          contactsToDelete[contact.id] = contact;
+        }
+      }
+
+      final contactsToDeleteList = contactsToDelete.values.toList();
+      int totalToDelete = contactsToDeleteList.length;
       int deletedCount = 0;
       List<String> deletedNames = [];
 
-      for (int i = 0; i < contactsToDelete.length; i++) {
-        var contact = contactsToDelete[i];
+      for (int i = 0; i < contactsToDeleteList.length; i++) {
+        var contact = contactsToDeleteList[i];
         String displayName = contact.displayName ?? '';
 
         await contact.delete();
         deletedCount++;
         deletedNames.add(displayName);
-        debugPrint('   🗑️ تم حذف ($deletedCount/$totalToDelete): "$displayName"');
+        debugPrint(
+            '   🗑️ تم حذف ($deletedCount/$totalToDelete): "$displayName"');
 
         if (i % 5 == 0 && mounted) {
           setState(() {});
@@ -262,7 +412,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
       debugPrint('✅ تم حذف $deletedCount جهة اتصال');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      _showMessage('✅ تم حذف $deletedCount جهة اتصال تحتوي على "- system"', Colors.green);
+      _showMessage('✅ تم حذف $deletedCount جهة اتصال تحتوي على "- system"',
+          Colors.green);
 
       if (deletedCount > 0) {
         _showDeletedSummary(deletedCount, deletedNames);
@@ -279,7 +430,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
   Future<void> _deleteNonSystemContactsWithSystemDuplicate() async {
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('🗑️ بدء حذف الأرقام التي لا تحتوي على "- system" ولها نظير به "- system"');
+    debugPrint(
+        '🗑️ بدء حذف الأرقام التي لا تحتوي على "- system" ولها نظير به "- system"');
 
     bool? confirm = await showDialog(
       context: context,
@@ -287,10 +439,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
         title: const Text('حذف الأرقام المكررة'),
         content: const Text(
             'هل أنت متأكد من حذف جميع الأرقام التي لا تحتوي على "- system" '
-                'ولها نفس الرقم موجود بالفعل به "- system"؟\nلا يمكن التراجع عن هذا الإجراء.'
-        ),
+            'ولها نفس الرقم موجود بالفعل به "- system"؟\nلا يمكن التراجع عن هذا الإجراء.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('حذف', style: TextStyle(color: Colors.red)),
@@ -315,51 +468,41 @@ class _SecurityScreenState extends State<SecurityScreen> {
         withAccounts: true,
       );
 
-      // تجميع الأرقام حسب الرقم (بعد التطبيع لتوحيد الفراغات والشرطات)
-      Map<String, List<Contact>> numberToContacts = {};
-      for (var contact in allContacts) {
-        for (var phone in contact.phones) {
-          String number = _normalizePhone(phone.number);
-          numberToContacts.putIfAbsent(number, () => []);
-          numberToContacts[number]!.add(contact);
-        }
-      }
+      final numberToContacts = _groupContactsBySaudiNumber(allContacts);
 
       // تحديد جهات الاتصال التي سيتم حذفها
-      List<Contact> contactsToDelete = [];
+      final contactsToDelete = <String, Contact>{};
 
       for (var entry in numberToContacts.entries) {
         List<Contact> contacts = entry.value;
 
         // هل فيه جهة اتصال بهذا الرقم تحتوي على "- system"؟
-        bool hasSystemContact = contacts.any((contact) {
-          String name = contact.displayName ?? '';
-          return name.contains('- system');
-        });
+        bool hasSystemContact = contacts.any(_isSystemContact);
 
         if (hasSystemContact) {
           // أضف كل جهات الاتصال التي لا تحتوي على "- system" للحذف
           for (var contact in contacts) {
-            String name = contact.displayName ?? '';
-            if (!name.contains('- system')) {
-              contactsToDelete.add(contact);
+            if (!_isSystemContact(contact)) {
+              contactsToDelete[contact.id] = contact;
             }
           }
         }
       }
 
-      int totalToDelete = contactsToDelete.length;
+      final contactsToDeleteList = contactsToDelete.values.toList();
+      int totalToDelete = contactsToDeleteList.length;
       int deletedCount = 0;
       List<String> deletedNames = [];
 
-      for (int i = 0; i < contactsToDelete.length; i++) {
-        var contact = contactsToDelete[i];
+      for (int i = 0; i < contactsToDeleteList.length; i++) {
+        var contact = contactsToDeleteList[i];
         String displayName = contact.displayName ?? '';
 
         await contact.delete();
         deletedCount++;
         deletedNames.add(displayName);
-        debugPrint('   🗑️ تم حذف ($deletedCount/$totalToDelete): "$displayName"');
+        debugPrint(
+            '   🗑️ تم حذف ($deletedCount/$totalToDelete): "$displayName"');
 
         if (i % 5 == 0 && mounted) {
           setState(() {});
@@ -371,7 +514,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
       debugPrint('✅ تم حذف $deletedCount جهة اتصال');
       debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-      _showMessage('✅ تم حذف $deletedCount جهة اتصال مكررة (بدون - system)', Colors.green);
+      _showMessage('✅ تم حذف $deletedCount جهة اتصال مكررة (بدون - system)',
+          Colors.green);
 
       if (deletedCount > 0) {
         _showNonSystemDeletedSummary(deletedCount, deletedNames);
@@ -396,12 +540,15 @@ class _SecurityScreenState extends State<SecurityScreen> {
             Text('🗑️ تم حذف $count جهة اتصال'),
             const SizedBox(height: 8),
             const Text('الأجهزة المحذوفة:'),
-            ...names.take(10).map((name) => Text('• $name', style: const TextStyle(fontSize: 12))),
+            ...names.take(10).map((name) =>
+                Text('• $name', style: const TextStyle(fontSize: 12))),
             if (names.length > 10) Text('... و ${names.length - 10} أخرى'),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('حسناً')),
         ],
       ),
     );
@@ -419,12 +566,15 @@ class _SecurityScreenState extends State<SecurityScreen> {
             Text('🗑️ تم حذف $count جهة اتصال (بدون - system)'),
             const SizedBox(height: 8),
             const Text('الأجهزة المحذوفة:'),
-            ...names.take(10).map((name) => Text('• $name', style: const TextStyle(fontSize: 12))),
+            ...names.take(10).map((name) =>
+                Text('• $name', style: const TextStyle(fontSize: 12))),
             if (names.length > 10) Text('... و ${names.length - 10} أخرى'),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('حسناً')),
         ],
       ),
     );
@@ -438,7 +588,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
     setState(() => _isUploading = true);
 
     try {
-      List<Map<String, String>> allContacts = await ContactsManager.getAllContacts();
+      List<Map<String, String>> allContacts =
+          await ContactsManager.getAllContacts();
 
       if (allContacts.isEmpty) {
         _showMessage('مفيش جهات اتصال على الجهاز', Colors.orange);
@@ -458,13 +609,14 @@ class _SecurityScreenState extends State<SecurityScreen> {
       if (result['status'] == 'success') {
         int newCount = result['data']['new_contacts_added'] ?? 0;
         int alreadyExists = result['data']['already_exists'] ?? 0;
-        int duplicatesByEmployee = result['data']['duplicates_by_employee'] ?? 0;
+        int duplicatesByEmployee =
+            result['data']['duplicates_by_employee'] ?? 0;
 
         _showMessage(
           '✅ تم رفع ${allContacts.length} رقم\n'
-              '🆕 جديد في النظام: $newCount\n'
-              '⚠️ موجود مسبقاً: $alreadyExists\n'
-              '👤 مكرر منك: $duplicatesByEmployee',
+          '🆕 جديد في النظام: $newCount\n'
+          '⚠️ موجود مسبقاً: $alreadyExists\n'
+          '👤 مكرر منك: $duplicatesByEmployee',
           Colors.green,
         );
       } else {
@@ -497,7 +649,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
 
       debugPrint('👤 Employee ID (from login): $employeeId');
 
-      final result = await ApiService.downloadAssignedContacts(token, employeeId);
+      final result =
+          await ApiService.downloadAssignedContacts(token, employeeId);
 
       if (result['status'] == 'success') {
         List contacts = result['data']['contacts'] ?? [];
@@ -545,7 +698,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('حسناً')),
         ],
       ),
     );
@@ -566,10 +721,13 @@ class _SecurityScreenState extends State<SecurityScreen> {
         title: const Text('تسجيل خروج'),
         content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('إلغاء')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('تسجيل خروج', style: TextStyle(color: Colors.red)),
+            child:
+                const Text('تسجيل خروج', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -584,119 +742,193 @@ class _SecurityScreenState extends State<SecurityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('مرحباً $_userName (مسؤول أمن)', style: TextStyle(fontSize: 16)),
+        title: Text('مرحباً $_userName (مسؤول أمن)',
+            style: TextStyle(fontSize: 16)),
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: 'تسجيل خروج'),
+          IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: _logout,
+              tooltip: 'تسجيل خروج'),
         ],
       ),
-      body: Padding(
+      body: ListView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // زر رفع الأرقام
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: _isUploading ? null : _uploadContacts,
-                icon: _isUploading
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.cloud_upload, size: 28),
-                label: Text(_isUploading ? 'جاري الرفع...' : 'رفع الأرقام', style: const TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        children: [
+          // زر رفع الأرقام
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: ElevatedButton.icon(
+              onPressed: _isUploading ? null : _uploadContacts,
+              icon: _isUploading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.cloud_upload, size: 28),
+              label: Text(_isUploading ? 'جاري الرفع...' : 'رفع الأرقام',
+                  style: const TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // زر سحب الأرقام الموزعة
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: ElevatedButton.icon(
+              onPressed:
+                  _isDownloadingAssigned ? null : _downloadAssignedContacts,
+              icon: _isDownloadingAssigned
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.assignment_turned_in, size: 28),
+              label: Text(
+                _isDownloadingAssigned
+                    ? 'جاري التحميل...'
+                    : 'سحب الأرقام الموزعة',
+                style: const TextStyle(fontSize: 18),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // زر تنظيف المكررات
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const CleanDuplicatesScreen()));
+              },
+              icon: const Icon(Icons.cleaning_services, size: 28),
+              label: const Text('تنظيف الأرقام المكررة',
+                  style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: ElevatedButton.icon(
+              onPressed: (_isRenamingSystem ||
+                      _isDeletingSystem ||
+                      _isDeletingNonSystem)
+                  ? null
+                  : _renameSystemContacts,
+              icon: _isRenamingSystem
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.drive_file_rename_outline, size: 28),
+              label: Text(
+                _isRenamingSystem
+                    ? 'جاري إعادة التسمية...'
+                    : 'إزالة (system) من الأسماء',
+                style: const TextStyle(fontSize: 18),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
+          ),
+          const SizedBox(height: 16),
 
-            const SizedBox(height: 16),
-
-            // زر سحب الأرقام الموزعة
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: _isDownloadingAssigned ? null : _downloadAssignedContacts,
-                icon: _isDownloadingAssigned
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.assignment_turned_in, size: 28),
-                label: Text(
-                  _isDownloadingAssigned ? 'جاري التحميل...' : 'سحب الأرقام الموزعة',
-                  style: const TextStyle(fontSize: 18),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+          // زر حذف الأرقام التي تحتوي على - system (القديم)
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: ElevatedButton.icon(
+              onPressed: (_isRenamingSystem ||
+                      _isDeletingSystem ||
+                      _isDeletingNonSystem)
+                  ? null
+                  : _deleteAllSystemContacts,
+              icon: _isDeletingSystem
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.delete_sweep, size: 28),
+              label: Text(
+                _isDeletingSystem ? 'جاري الحذف...' : 'حذف الأرقام (system)',
+                style: const TextStyle(fontSize: 18),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 16),
 
-            // زر تنظيف المكررات
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const CleanDuplicatesScreen()));
-                },
-                icon: const Icon(Icons.cleaning_services, size: 28),
-                label: const Text('تنظيف الأرقام المكررة', style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+          // زر حذف الأرقام المكررة (الجديد) - اللي بدون - system ولها نظير به - system
+          SizedBox(
+            width: double.infinity,
+            height: 60,
+            child: ElevatedButton.icon(
+              onPressed: (_isRenamingSystem ||
+                      _isDeletingSystem ||
+                      _isDeletingNonSystem)
+                  ? null
+                  : _deleteNonSystemContactsWithSystemDuplicate,
+              icon: _isDeletingNonSystem
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.clean_hands, size: 28),
+              label: Text(
+                _isDeletingNonSystem
+                    ? 'جاري الحذف...'
+                    : 'حذف المكررات (بدون system)',
+                style: const TextStyle(fontSize: 18),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepOrange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 16),
-
-            // زر حذف الأرقام التي تحتوي على - system (القديم)
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: (_isDeletingSystem || _isDeletingNonSystem) ? null : _deleteAllSystemContacts,
-                icon: _isDeletingSystem
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.delete_sweep, size: 28),
-                label: Text(
-                  _isDeletingSystem ? 'جاري الحذف...' : 'حذف الأرقام (system)',
-                  style: const TextStyle(fontSize: 18),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // زر حذف الأرقام المكررة (الجديد) - اللي بدون - system ولها نظير به - system
-            SizedBox(
-              width: double.infinity,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: (_isDeletingSystem || _isDeletingNonSystem) ? null : _deleteNonSystemContactsWithSystemDuplicate,
-                icon: _isDeletingNonSystem
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.clean_hands, size: 28),
-                label: Text(
-                  _isDeletingNonSystem ? 'جاري الحذف...' : 'حذف المكررات (بدون system)',
-                  style: const TextStyle(fontSize: 18),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

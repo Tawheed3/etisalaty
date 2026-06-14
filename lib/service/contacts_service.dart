@@ -1,8 +1,8 @@
 // lib/service/contacts_service.dart
 import 'package:flutter_contacts/flutter_contacts.dart';
+import '../utils/saudi_phone_number.dart';
 
 class ContactsManager {
-
   static Future<List<Map<String, String>>> getAllContacts() async {
     print('📱 [ContactsManager.getAllContacts] بدء جلب الجهات');
 
@@ -15,15 +15,16 @@ class ContactsManager {
       withProperties: true,
     );
 
-    print('📱 [ContactsManager.getAllContacts] تم جلب ${contacts.length} جهة اتصال');
+    print(
+        '📱 [ContactsManager.getAllContacts] تم جلب ${contacts.length} جهة اتصال');
 
     List<Map<String, String>> formattedContacts = [];
 
     for (var contact in contacts) {
       for (var phone in contact.phones) {
-        String number = phone.number.trim();
+        final number = SaudiPhoneNumber.canonicalize(phone.number);
 
-        if (number.isNotEmpty) {
+        if (number != null) {
           String contactName = contact.displayName;
           if (contactName.trim().isEmpty) {
             contactName = 'بدون اسم';
@@ -37,7 +38,8 @@ class ContactsManager {
       }
     }
 
-    print('📱 [ContactsManager.getAllContacts] تم تنسيق ${formattedContacts.length} رقم (مع التكرارات)');
+    print(
+        '📱 [ContactsManager.getAllContacts] تم تنسيق ${formattedContacts.length} رقم (مع التكرارات)');
     return formattedContacts;
   }
 
@@ -53,17 +55,20 @@ class ContactsManager {
       withProperties: true,
     );
 
-    print('🔍 [ContactsManager.findDuplicateContacts] تم جلب ${allContacts.length} جهة اتصال');
+    print(
+        '🔍 [ContactsManager.findDuplicateContacts] تم جلب ${allContacts.length} جهة اتصال');
 
     Map<String, List<Contact>> phoneToContacts = {};
 
     for (var contact in allContacts) {
       for (var phone in contact.phones) {
-        String cleanNumber = phone.number.trim();
+        final cleanNumber = SaudiPhoneNumber.canonicalize(phone.number);
+        if (cleanNumber == null) continue;
 
         phoneToContacts.putIfAbsent(cleanNumber, () => []);
 
-        bool alreadyExists = phoneToContacts[cleanNumber]!.any((c) => c.id == contact.id);
+        bool alreadyExists =
+            phoneToContacts[cleanNumber]!.any((c) => c.id == contact.id);
         if (!alreadyExists) {
           phoneToContacts[cleanNumber]!.add(contact);
         }
@@ -77,7 +82,8 @@ class ContactsManager {
       }
     });
 
-    print('🔍 [ContactsManager.findDuplicateContacts] تم العثور على ${duplicates.length} رقم مكرر');
+    print(
+        '🔍 [ContactsManager.findDuplicateContacts] تم العثور على ${duplicates.length} رقم مكرر');
     return duplicates;
   }
 
@@ -110,6 +116,7 @@ class ContactsManager {
       }
     }
 
-    print('✅ [ContactsManager.mergeDuplicates] تم دمج الرقم $phoneNumber بنجاح');
+    print(
+        '✅ [ContactsManager.mergeDuplicates] تم دمج الرقم $phoneNumber بنجاح');
   }
 }
