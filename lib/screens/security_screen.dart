@@ -154,20 +154,13 @@ class _SecurityScreenState extends State<SecurityScreen> {
           );
           if (renamed == null) continue;
 
-          contact.displayName = renamed;
-
-          final renamedFirst = SaudiPhoneNumber.removeOwnershipSystemSuffix(
-            contact.name.first,
-          );
-          if (renamedFirst != null) {
-            contact.name.first = renamedFirst;
-          } else {
-            contact.name.first = renamed;
-            contact.name.middle = '';
-            contact.name.last = '';
-            contact.name.prefix = '';
-            contact.name.suffix = '';
-          }
+          // On iOS, displayName is read-only (computed from name fields).
+          // Setting it directly throws a CNError — only update name fields.
+          contact.name.first = renamed;
+          contact.name.middle = '';
+          contact.name.last = '';
+          contact.name.prefix = '';
+          contact.name.suffix = '';
 
           await contact.update();
           renamedCount++;
