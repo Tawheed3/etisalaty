@@ -1,6 +1,7 @@
 class SaudiPhoneNumber {
+  // matches any (ANYTHING - system) suffix — covers ZM, ZMK, UNOWNED, etc.
   static final RegExp _ownershipSystemSuffix = RegExp(
-    r'\s*\(\s*(?:ZMK|ZM|ZK|MK|Z|M|K)\s*-\s*system\s*\)\s*$',
+    r'\s*\([^)]*-\s*system\s*\)\s*$',
     caseSensitive: false,
   );
 
