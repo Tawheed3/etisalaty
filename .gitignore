@@ -114,4 +114,4 @@ env.dart
 # Temp files
 *.tmp
 *.temp
-*.cache
+*.cache.flutter-plugins
