@@ -93,7 +93,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
       builder: (context) => AlertDialog(
         title: const Text('إزالة علامة system'),
         content: const Text(
-          'سيتم تغيير أسماء جهات الاتصال السعودية فقط، مثل:\n'
+          'سيتم تغيير أسماء جميع جهات الاتصال التي تحتوي على علامة system، مثل:\n'
           'Ahmed (ZM - system) ← Ahmed\n'
           'Ahmed (system) ← Ahmed\n\n'
           'لن يتم حذف أي جهة اتصال أو رقم.',
@@ -129,8 +129,6 @@ class _SecurityScreenState extends State<SecurityScreen> {
       );
 
       for (final contact in contacts) {
-        if (!_hasSaudiMobileNumber(contact)) continue;
-
         final renamed = SaudiPhoneNumber.removeOwnershipSystemSuffix(
           contact.displayName,
         );
