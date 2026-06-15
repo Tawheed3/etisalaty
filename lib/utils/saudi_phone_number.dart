@@ -9,6 +9,12 @@ class SaudiPhoneNumber {
     caseSensitive: false,
   );
 
+  // handles: Ahmed(system) / Ahmed (system) / Ahmed ( system )
+  static final RegExp _simpleSystemSuffix = RegExp(
+    r'\s*\(\s*system\s*\)\s*$',
+    caseSensitive: false,
+  );
+
   static const Map<String, String> _localizedDigits = {
     '٠': '0',
     '١': '1',
@@ -59,16 +65,27 @@ class SaudiPhoneNumber {
   static bool isSystemContactName(String name) {
     final trimmed = name.trim();
     return _ownershipSystemSuffix.hasMatch(trimmed) ||
-        _historicalSystemSuffix.hasMatch(trimmed);
+        _historicalSystemSuffix.hasMatch(trimmed) ||
+        _simpleSystemSuffix.hasMatch(trimmed);
   }
 
-  /// Removes only a recognized Z/M/K Etisalaty ownership suffix.
+  /// Removes any recognized system suffix: (ZM - system), - system, (system).
   static String? removeOwnershipSystemSuffix(String name) {
     var renamed = name.trim();
     var removed = false;
 
     while (_ownershipSystemSuffix.hasMatch(renamed)) {
       renamed = renamed.replaceFirst(_ownershipSystemSuffix, '').trim();
+      removed = true;
+    }
+
+    while (_simpleSystemSuffix.hasMatch(renamed)) {
+      renamed = renamed.replaceFirst(_simpleSystemSuffix, '').trim();
+      removed = true;
+    }
+
+    while (_historicalSystemSuffix.hasMatch(renamed)) {
+      renamed = renamed.replaceFirst(_historicalSystemSuffix, '').trim();
       removed = true;
     }
 

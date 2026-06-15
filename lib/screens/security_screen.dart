@@ -94,7 +94,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
         title: const Text('إزالة علامة system'),
         content: const Text(
           'سيتم تغيير أسماء جهات الاتصال السعودية فقط، مثل:\n'
-          'Ahmed (ZM - system) ← Ahmed\n\n'
+          'Ahmed (ZM - system) ← Ahmed\n'
+          'Ahmed (system) ← Ahmed\n\n'
           'لن يتم حذف أي جهة اتصال أو رقم.',
         ),
         actions: [
