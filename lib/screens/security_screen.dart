@@ -123,18 +123,37 @@ class _SecurityScreenState extends State<SecurityScreen> {
         return;
       }
 
-      final contacts = await FlutterContacts.getContacts(
-        withProperties: true,
-        withAccounts: true,
+      // Pass 1: fetch names only (fast — no phones/emails loaded)
+      final allContacts = await FlutterContacts.getContacts(
+        withProperties: false,
+        withAccounts: false,
       );
 
-      for (final contact in contacts) {
-        final renamed = SaudiPhoneNumber.removeOwnershipSystemSuffix(
-          contact.displayName,
-        );
-        if (renamed == null) continue;
+      // Filter to only contacts that actually need renaming
+      final toRename = allContacts
+          .where((c) => SaudiPhoneNumber.isSystemContactName(c.displayName))
+          .toList();
 
+      if (toRename.isEmpty) {
+        _showMessage('لا توجد جهات اتصال تحتوي على علامة system', Colors.orange);
+        return;
+      }
+
+      // Pass 2: fetch full properties only for the contacts that need renaming
+      for (final stub in toRename) {
         try {
+          final contact = await FlutterContacts.getContact(
+            stub.id,
+            withProperties: true,
+            withAccounts: true,
+          );
+          if (contact == null) continue;
+
+          final renamed = SaudiPhoneNumber.removeOwnershipSystemSuffix(
+            contact.displayName,
+          );
+          if (renamed == null) continue;
+
           contact.displayName = renamed;
 
           final renamedFirst = SaudiPhoneNumber.removeOwnershipSystemSuffix(
@@ -154,7 +173,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
           renamedCount++;
         } catch (error) {
           failedCount++;
-          debugPrint('تعذر إعادة تسمية ${contact.displayName}: $error');
+          debugPrint('تعذر إعادة تسمية ${stub.displayName}: $error');
         }
       }
 
