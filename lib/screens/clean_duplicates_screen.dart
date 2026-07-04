@@ -13,9 +13,9 @@ class CleanDuplicatesScreen extends StatefulWidget {
 class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
   Map<String, List<Contact>>? duplicates;
   bool isLoading = true;
-  Map<String, Contact?> selectedContacts = {};
-  Map<String, TextEditingController> newNameControllers = {};
-  Map<String, bool> useNewName = {};
+
+  // contact IDs selected for DELETION — nothing pre-selected
+  Map<String, Set<String>> selectedForDeletion = {};
 
   @override
   void initState() {
@@ -27,11 +27,9 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
     setState(() => isLoading = true);
     try {
       duplicates = await ContactsManager.findDuplicateContacts();
-      if (duplicates != null && duplicates!.isNotEmpty) {
-        for (var entry in duplicates!.entries) {
-          selectedContacts[entry.key] = entry.value.first;
-          newNameControllers[entry.key] = TextEditingController();
-          useNewName[entry.key] = false;
+      if (duplicates != null) {
+        for (var key in duplicates!.keys) {
+          selectedForDeletion[key] = {};
         }
       }
     } catch (e) {
@@ -42,34 +40,60 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
     setState(() => isLoading = false);
   }
 
-  Future<void> _applyClean() async {
-    if (duplicates == null || duplicates!.isEmpty) return;
+  int get totalSelected =>
+      selectedForDeletion.values.fold(0, (sum, set) => sum + set.length);
 
-    showDialog(context: context, barrierDismissible: false, builder: (context) => Center(child: CircularProgressIndicator()));
+  Future<void> _applyClean() async {
+    if (totalSelected == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختار على الأقل جهة واحدة للحذف'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تأكيد الحذف'),
+        content: Text('هتحذف $totalSelected جهة اتصال. مش هيتراجع. متأكد؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('حذف', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
 
     try {
-      int mergedCount = 0;
-      for (var entry in duplicates!.entries) {
+      int deletedCount = 0;
+      for (var entry in selectedForDeletion.entries) {
         String phone = entry.key;
-        List<Contact> contacts = entry.value;
-        Contact? selected = selectedContacts[phone];
-        if (selected != null) {
-          List<Contact> toDelete = contacts.where((c) => c.id != selected.id).toList();
-          String? newName = (useNewName[phone] == true && newNameControllers[phone]!.text.isNotEmpty)
-              ? newNameControllers[phone]!.text
-              : null;
-          await ContactsManager.mergeDuplicates(
-            phoneNumber: phone,
-            keepThisContact: selected,
-            deleteTheseContacts: toDelete,
-            newName: newName,
-          );
-          mergedCount++;
+        Set<String> idsToDelete = entry.value;
+        if (idsToDelete.isEmpty) continue;
+
+        List<Contact> allContacts = duplicates![phone]!;
+        List<Contact> toDelete = allContacts.where((c) => idsToDelete.contains(c.id)).toList();
+
+        for (var contact in toDelete) {
+          await FlutterContacts.deleteContact(contact);
+          deletedCount++;
         }
       }
+
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ تم تنظيف $mergedCount رقم مكرر بنجاح'), backgroundColor: Colors.green),
+        SnackBar(content: Text('✅ تم حذف $deletedCount جهة اتصال بنجاح'), backgroundColor: Colors.green),
       );
       await _loadDuplicates();
     } catch (e) {
@@ -81,124 +105,137 @@ class _CleanDuplicatesScreenState extends State<CleanDuplicatesScreen> {
   }
 
   @override
-  void dispose() {
-    for (var controller in newNameControllers.values) controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('تنظيف جهات الاتصال'),
+        title: const Text('تنظيف جهات الاتصال'),
         backgroundColor: Colors.orange,
         actions: [
-          if (duplicates != null && duplicates!.isNotEmpty)
-            IconButton(icon: Icon(Icons.check, color: Colors.white), onPressed: _applyClean, tooltip: 'تطبيق التغييرات'),
+          if (totalSelected > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: TextButton.icon(
+                onPressed: _applyClean,
+                icon: const Icon(Icons.delete, color: Colors.white),
+                label: Text(
+                  'حذف ($totalSelected)',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
         ],
       ),
       body: isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : duplicates == null || duplicates!.isEmpty
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, size: 80, color: Colors.green),
-            SizedBox(height: 16),
-            Text('🎉 مفيش أرقام مكررة!', style: TextStyle(fontSize: 24)),
-            Text('جهات الاتصال نظيفة', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      )
-          : ListView.builder(
-        itemCount: duplicates!.length,
-        itemBuilder: (context, index) {
-          String phone = duplicates!.keys.elementAt(index);
-          List<Contact> contacts = duplicates![phone]!;
-          return Card(
-            margin: EdgeInsets.all(12),
-            child: Padding(
-              padding: EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                    child: Row(
-                      children: [
-                        Icon(Icons.phone, color: Colors.blue),
-                        SizedBox(width: 8),
-                        Expanded(child: Text(phone, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(12)),
-                          child: Text('${contacts.length} مرات', style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle, size: 80, color: Colors.green),
+                      SizedBox(height: 16),
+                      Text('🎉 مفيش أرقام مكررة!', style: TextStyle(fontSize: 24)),
+                      Text('جهات الاتصال نظيفة', style: TextStyle(color: Colors.grey)),
+                    ],
                   ),
-                  SizedBox(height: 16),
-                  Card(
-                    color: Colors.grey.shade50,
-                    child: Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: useNewName[phone],
-                                onChanged: (val) {
-                                  setState(() {
-                                    useNewName[phone] = val ?? false;
-                                    if (!useNewName[phone]!) newNameControllers[phone]!.clear();
-                                  });
-                                },
-                              ),
-                              Text('استخدام اسم جديد لكل الأرقام'),
-                            ],
-                          ),
-                          if (useNewName[phone] == true) ...[
-                            SizedBox(height: 8),
-                            TextField(
-                              controller: newNameControllers[phone],
-                              decoration: InputDecoration(
-                                hintText: 'اكتب الاسم الجديد...',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person),
-                              ),
-                            ),
-                          ],
-                        ],
+                )
+              : Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      color: Colors.orange.shade50,
+                      child: Text(
+                        '${duplicates!.length} رقم مكرر — اختار اللي تحذفه',
+                        style: const TextStyle(fontSize: 14, color: Colors.orange),
                       ),
                     ),
-                  ),
-                  SizedBox(height: 12),
-                  Text('اختر الاسم اللي تحتفظ به:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8),
-                  ...contacts.map((contact) {
-                    bool isSelected = selectedContacts[phone]?.id == contact.id;
-                    String phoneNumber = contact.phones.isNotEmpty ? contact.phones.first.number : '';
-                    String displayName = contact.displayName.isNotEmpty ? contact.displayName : 'بدون اسم';
-                    return RadioListTile<Contact>(
-                      title: Text(displayName, style: TextStyle(fontSize: 16)),
-                      subtitle: Text(phoneNumber),
-                      value: contact,
-                      groupValue: selectedContacts[phone],
-                      onChanged: useNewName[phone] == true ? null : (val) => setState(() => selectedContacts[phone] = val),
-                      activeColor: Colors.green,
-                      selected: isSelected,
-                      tileColor: isSelected ? Colors.green.shade50 : null,
-                    );
-                  }).toList(),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: duplicates!.length,
+                        itemBuilder: (context, index) {
+                          String phone = duplicates!.keys.elementAt(index);
+                          List<Contact> contacts = duplicates![phone]!;
+                          Set<String> selectedIds = selectedForDeletion[phone]!;
+
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.phone, color: Colors.blue),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            phone,
+                                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            '${contacts.length} مرات',
+                                            style: const TextStyle(color: Colors.white),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'ضع علامة على اللي تحذفه:',
+                                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  ...contacts.map((contact) {
+                                    bool isChecked = selectedIds.contains(contact.id);
+                                    String displayName = contact.displayName.isNotEmpty
+                                        ? contact.displayName
+                                        : 'بدون اسم';
+                                    String phoneNumber = contact.phones.isNotEmpty
+                                        ? contact.phones.first.number
+                                        : '';
+                                    return CheckboxListTile(
+                                      title: Text(displayName),
+                                      subtitle: Text(phoneNumber),
+                                      value: isChecked,
+                                      activeColor: Colors.red,
+                                      checkColor: Colors.white,
+                                      tileColor: isChecked ? Colors.red.shade50 : null,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          if (val == true) {
+                                            selectedIds.add(contact.id);
+                                          } else {
+                                            selectedIds.remove(contact.id);
+                                          }
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
     );
   }
 }
